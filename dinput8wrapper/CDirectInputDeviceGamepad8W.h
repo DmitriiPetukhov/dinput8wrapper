@@ -7,17 +7,17 @@ private:
 
 public:
 
-	CDirectInputDeviceGamepad8W() : CDirectInputDeviceGamepad8()
+	CDirectInputDeviceGamepad8W(DWORD userIndex) : CDirectInputDeviceGamepad8(userIndex)
 	{
 		gamepadDeviceInfo = new DIDEVICEINSTANCEW();
-		ZeroMemory(gamepadDeviceInfo, sizeof(DIDEVICEINSTANCEA));
-		gamepadDeviceInfo->dwSize = sizeof(DIDEVICEINSTANCEA);
-		gamepadDeviceInfo->guidInstance = GUID_Xbox360Controller;
+		ZeroMemory(gamepadDeviceInfo, sizeof(DIDEVICEINSTANCEW));
+		gamepadDeviceInfo->dwSize = sizeof(DIDEVICEINSTANCEW);
+		gamepadDeviceInfo->guidInstance = diGlobalsInstance->gamepadInstanceGuids[userIndex];
 		gamepadDeviceInfo->guidProduct = GUID_Xbox360Controller;
 		gamepadDeviceInfo->dwDevType = DIDEVTYPE_HID | DI8DEVTYPE_GAMEPAD | (DI8DEVTYPEGAMEPAD_STANDARD << 8);
 		gamepadDeviceInfo->wUsage = HID_USAGE_GENERIC_GAMEPAD;
 		gamepadDeviceInfo->wUsagePage = HID_USAGE_PAGE_GENERIC;
-		StringCbCopyW(gamepadDeviceInfo->tszInstanceName, 260, L"Controller (Gamepad XBox360)");
+		StringCbPrintfW(gamepadDeviceInfo->tszInstanceName, 260, L"Controller (Gamepad XBox360) %lu", userIndex + 1);
 		StringCbCopyW(gamepadDeviceInfo->tszProductName, 260, L"Controller (Gamepad XBox360)");
 
 		this->dwDevType = gamepadDeviceInfo->dwDevType;
@@ -131,7 +131,74 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE EnumObjects(LPDIENUMDEVICEOBJECTSCALLBACKW lpCallback, LPVOID pvRef, DWORD dwFlags) {
 
-		diGlobalsInstance->LogA("GamepadDevice->EnumObjects()", __FILE__, __LINE__);
+		diGlobalsInstance->LogA("GamepadDevice->EnumObjects(), dwFlags: %x", __FILE__, __LINE__, dwFlags);
+
+		struct AxisInfo { const GUID* guid; DWORD offset; const wchar_t* name; };
+		AxisInfo axes[] = {
+			{ &GUID_XAxis, DIJOFS_X, L"X-Axis" },
+			{ &GUID_YAxis, DIJOFS_Y, L"Y-Axis" },
+			{ &GUID_ZAxis, DIJOFS_Z, L"Left Trigger" },
+			{ &GUID_RxAxis, DIJOFS_RX, L"Rx-Axis" },
+			{ &GUID_RyAxis, DIJOFS_RY, L"Ry-Axis" },
+			{ &GUID_RzAxis, DIJOFS_RZ, L"Right Trigger" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(axes); i++)
+		{
+			DWORD type = DIDFT_ABSAXIS | DIDFT_MAKEINSTANCE(i);
+			if (!ShouldEnumObject(dwFlags, type))
+			{
+				continue;
+			}
+
+			DIDEVICEOBJECTINSTANCEW objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEW);
+			objectInfo.guidType = *axes[i].guid;
+			objectInfo.dwOfs = axes[i].offset;
+			objectInfo.dwType = type;
+			objectInfo.dwFlags = DIDOI_GUIDISUSAGE;
+			StringCbCopyW(objectInfo.tszName, MAX_PATH, axes[i].name);
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
+		}
+
+		if (ShouldEnumObject(dwFlags, DIDFT_POV))
+		{
+			DIDEVICEOBJECTINSTANCEW objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEW);
+			objectInfo.guidType = GUID_POV;
+			objectInfo.dwOfs = DIJOFS_POV(0);
+			objectInfo.dwType = DIDFT_POV;
+			objectInfo.dwFlags = DIDOI_GUIDISUSAGE;
+			StringCbCopyW(objectInfo.tszName, MAX_PATH, L"POV");
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
+		}
+
+		for (int i = 0; i < 10; i++)
+		{
+			DWORD type = DIDFT_PSHBUTTON | DIDFT_MAKEINSTANCE(i);
+			if (!ShouldEnumObject(dwFlags, type))
+			{
+				continue;
+			}
+
+			DIDEVICEOBJECTINSTANCEW objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEW);
+			objectInfo.guidType = GUID_Button;
+			objectInfo.dwOfs = DIJOFS_BUTTON(i);
+			objectInfo.dwType = type;
+			objectInfo.dwFlags = DIDOI_GUIDISUSAGE;
+			StringCbPrintfW(objectInfo.tszName, MAX_PATH, L"Button %i", i + 1);
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
+		}
 
 		return DI_OK;
 	}

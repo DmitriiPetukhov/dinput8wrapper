@@ -6,12 +6,44 @@ public:
 	DIDATAFORMAT dataFormat;
 	ULONG refCount;
 	DWORD dwDevType;
+	DWORD xinputUserIndex;
 	bool isAcquired;
 
-	CDirectInputDeviceGamepad8()
+	CDirectInputDeviceGamepad8(DWORD userIndex)
 	{
 		refCount = 1;
+		xinputUserIndex = userIndex;
 		isAcquired = false;
+	}
+
+	bool ShouldEnumObject(DWORD requestedFlags, DWORD objectType)
+	{
+		if (requestedFlags == DIDFT_ALL)
+		{
+			return true;
+		}
+
+		if ((requestedFlags & DIDFT_AXIS) && (objectType & DIDFT_AXIS))
+		{
+			return true;
+		}
+
+		if ((requestedFlags & DIDFT_ABSAXIS) && (objectType & DIDFT_ABSAXIS))
+		{
+			return true;
+		}
+
+		if ((requestedFlags & DIDFT_BUTTON) && (objectType & DIDFT_BUTTON))
+		{
+			return true;
+		}
+
+		if ((requestedFlags & DIDFT_POV) && (objectType & DIDFT_POV))
+		{
+			return true;
+		}
+
+		return false;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Base_QueryInterface(GUID* riid, LPVOID* ppvObj)
@@ -44,7 +76,7 @@ public:
 
 		lpDIDevCaps->dwFlags = DIDC_ATTACHED | DIDC_EMULATED;
 		lpDIDevCaps->dwDevType = this->dwDevType;
-		lpDIDevCaps->dwAxes = 5;
+		lpDIDevCaps->dwAxes = 6;
 		lpDIDevCaps->dwButtons = 10;
 		lpDIDevCaps->dwPOVs = 1;
 		lpDIDevCaps->dwFFSamplePeriod = 0;
@@ -92,26 +124,14 @@ public:
 			return DIERR_INPUTLOST;
 		}
 
+		if (!diGlobalsInstance->IsXInputControllerConnected(xinputUserIndex))
+		{
+			return DI_NOTATTACHED;
+		}
+
 		diGlobalsInstance->Lock();
 		{
-			ZeroMemory(lpvData, cbData);
-
-			diGlobalsInstance->gamepadState->lX = 0;
-			diGlobalsInstance->gamepadState->lY = 0;
-			diGlobalsInstance->gamepadState->lZ = 0;
-			diGlobalsInstance->gamepadState->lRx = 0;
-			diGlobalsInstance->gamepadState->lRy = 0;
-			diGlobalsInstance->gamepadState->lRz = 0;
-			diGlobalsInstance->gamepadState->rglSlider[0] = 0;
-			diGlobalsInstance->gamepadState->rglSlider[1] = 0;
-			diGlobalsInstance->gamepadState->rgdwPOV[0] = -1;
-			diGlobalsInstance->gamepadState->rgdwPOV[1] = -1;
-			diGlobalsInstance->gamepadState->rgdwPOV[2] = -1;
-			diGlobalsInstance->gamepadState->rgdwPOV[3] = -1;
-			for (int i = 0; i < 32; i++)
-			{
-				diGlobalsInstance->gamepadState->rgbButtons[i] = 0;
-			}
+			diGlobalsInstance->PopulateJoystickStateFromXInput(xinputUserIndex, diGlobalsInstance->gamepadState);
 
 			if (cbData == sizeof(DIJOYSTATE))
 			{

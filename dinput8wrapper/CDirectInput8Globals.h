@@ -6,14 +6,22 @@ private:
 	DWORD dikMapping[256];
 	const wchar_t* dikNames[256];
 	CRITICAL_SECTION critSect;
+	CRITICAL_SECTION logCritSect;
+	HANDLE logFile = INVALID_HANDLE_VALUE;
+	bool logFileOpenAttempted = false;
 
 public:
 
-	bool enableGamepadSupport = false;
+	typedef DWORD(WINAPI* XInputGetStateProc)(DWORD, XINPUT_STATE*);
 
-	bool ShouldExposeDirectInputGamepads() const
+	HMODULE xinputModule = NULL;
+	XInputGetStateProc xinputGetState = NULL;
+
+	GUID gamepadInstanceGuids[4];
+
+	bool ShouldExposeDirectInputGamepads()
 	{
-		return false;
+		return EnsureXInputLoaded();
 	}
 
 	// Sequence number for keyboard actions
@@ -36,6 +44,42 @@ public:
 
 	DIJOYSTATE2* gamepadState = new DIJOYSTATE2();
 
+	bool EnsureLogFileOpen()
+	{
+		if (logFile != INVALID_HANDLE_VALUE)
+		{
+			return true;
+		}
+
+		if (logFileOpenAttempted)
+		{
+			return false;
+		}
+
+		logFileOpenAttempted = true;
+
+		char logPath[MAX_PATH];
+		DWORD pathLength = GetModuleFileNameA(DllHModule, logPath, MAX_PATH);
+		if (pathLength == 0 || pathLength >= MAX_PATH)
+		{
+			return false;
+		}
+
+		for (DWORD i = pathLength; i > 0; i--)
+		{
+			if (logPath[i - 1] == '\\' || logPath[i - 1] == '/')
+			{
+				logPath[i] = '\0';
+				break;
+			}
+		}
+
+		StringCbCatA(logPath, MAX_PATH, "dinput8wrapper.log");
+
+		logFile = CreateFileA(logPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		return logFile != INVALID_HANDLE_VALUE;
+	}
+
 	void LogA(LPCSTR LogLine, LPCTSTR file, int line, ...)
 	{
 		int flen = strlen(file) - 1;
@@ -56,11 +100,22 @@ public:
 		char tmp[4096];
 		StringCbPrintfA(tmp, 4096, "[dinput8][%s:%u] %s\r\n",filePtr,line,tmp2);
 		OutputDebugStringA(tmp);
+
+		EnterCriticalSection(&logCritSect);
+		{
+			if (EnsureLogFileOpen())
+			{
+				DWORD bytesWritten = 0;
+				WriteFile(logFile, tmp, (DWORD)strlen(tmp), &bytesWritten, NULL);
+			}
+		}
+		LeaveCriticalSection(&logCritSect);
 	}
 
 	CDirectInput8Globals()
 	{
 		InitializeCriticalSection(&critSect);
+		InitializeCriticalSection(&logCritSect);
 				
 		ZeroMemory(keyStates, sizeof(keyStates));
 		ZeroMemory(gameKeyStates, sizeof(gameKeyStates));
@@ -69,6 +124,13 @@ public:
 		ZeroMemory(gamepadState, sizeof(DIJOYSTATE2));
 
 		dwSequence = 1;
+
+		for (DWORD i = 0; i < 4; i++)
+		{
+			gamepadInstanceGuids[i] = GUID_Xbox360Controller;
+			gamepadInstanceGuids[i].Data3 = (WORD)i;
+			gamepadInstanceGuids[i].Data4[7] = (BYTE)i;
+		}
 
 		// DIK-Mapping:
 		{
@@ -331,6 +393,145 @@ public:
 	void Unlock()
 	{
 		LeaveCriticalSection(&critSect);
+	}
+
+	bool EnsureXInputLoaded()
+	{
+		if (xinputGetState)
+		{
+			return true;
+		}
+
+		const char* dllNames[] = { "xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll" };
+		for (int i = 0; i < ARRAYSIZE(dllNames); i++)
+		{
+			xinputModule = LoadLibraryA(dllNames[i]);
+			if (xinputModule)
+			{
+				xinputGetState = (XInputGetStateProc)GetProcAddress(xinputModule, "XInputGetState");
+				if (xinputGetState)
+				{
+					LogA("Loaded %s for gamepad support", __FILE__, __LINE__, dllNames[i]);
+					return true;
+				}
+
+				FreeLibrary(xinputModule);
+				xinputModule = NULL;
+			}
+		}
+
+		LogA("XInput is not available; gamepad support disabled", __FILE__, __LINE__);
+		return false;
+	}
+
+	bool IsXInputControllerConnected(DWORD userIndex)
+	{
+		if (!EnsureXInputLoaded() || userIndex >= 4)
+		{
+			return false;
+		}
+
+		XINPUT_STATE state;
+		ZeroMemory(&state, sizeof(state));
+		return xinputGetState(userIndex, &state) == ERROR_SUCCESS;
+	}
+
+	DWORD GetXInputControllerIndex(GUID* rguid)
+	{
+		if (!rguid)
+		{
+			return 0xFFFFFFFF;
+		}
+
+		for (DWORD i = 0; i < 4; i++)
+		{
+			if (IsEqualIID(gamepadInstanceGuids[i], *rguid))
+			{
+				return i;
+			}
+		}
+
+		if (IsEqualIID(GUID_Xbox360Controller, *rguid))
+		{
+			return 0;
+		}
+
+		return 0xFFFFFFFF;
+	}
+
+	void PopulateJoystickStateFromXInput(DWORD userIndex, DIJOYSTATE2* state)
+	{
+		ZeroMemory(state, sizeof(DIJOYSTATE2));
+
+		state->rgdwPOV[0] = (DWORD)-1;
+		state->rgdwPOV[1] = (DWORD)-1;
+		state->rgdwPOV[2] = (DWORD)-1;
+		state->rgdwPOV[3] = (DWORD)-1;
+
+		if (!EnsureXInputLoaded() || userIndex >= 4)
+		{
+			return;
+		}
+
+		XINPUT_STATE xinputState;
+		ZeroMemory(&xinputState, sizeof(xinputState));
+		if (xinputGetState(userIndex, &xinputState) != ERROR_SUCCESS)
+		{
+			return;
+		}
+
+		const XINPUT_GAMEPAD* pad = &xinputState.Gamepad;
+
+		state->lX = pad->sThumbLX;
+		state->lY = -pad->sThumbLY;
+		state->lRx = pad->sThumbRX;
+		state->lRy = -pad->sThumbRY;
+		state->lZ = pad->bLeftTrigger * 257;
+		state->lRz = pad->bRightTrigger * 257;
+
+		if ((pad->wButtons & XINPUT_GAMEPAD_DPAD_UP) && (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT))
+		{
+			state->rgdwPOV[0] = 4500;
+		}
+		else if ((pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) && (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN))
+		{
+			state->rgdwPOV[0] = 13500;
+		}
+		else if ((pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN) && (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT))
+		{
+			state->rgdwPOV[0] = 22500;
+		}
+		else if ((pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT) && (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP))
+		{
+			state->rgdwPOV[0] = 31500;
+		}
+		else if (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+		{
+			state->rgdwPOV[0] = 0;
+		}
+		else if (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+		{
+			state->rgdwPOV[0] = 9000;
+		}
+		else if (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+		{
+			state->rgdwPOV[0] = 18000;
+		}
+		else if (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+		{
+			state->rgdwPOV[0] = 27000;
+		}
+
+		state->rgbButtons[0] = (pad->wButtons & XINPUT_GAMEPAD_A) ? 0x80 : 0;
+		state->rgbButtons[1] = (pad->wButtons & XINPUT_GAMEPAD_B) ? 0x80 : 0;
+		state->rgbButtons[2] = (pad->wButtons & XINPUT_GAMEPAD_X) ? 0x80 : 0;
+		state->rgbButtons[3] = (pad->wButtons & XINPUT_GAMEPAD_Y) ? 0x80 : 0;
+		state->rgbButtons[4] = (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) ? 0x80 : 0;
+		state->rgbButtons[5] = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) ? 0x80 : 0;
+		state->rgbButtons[6] = (pad->wButtons & XINPUT_GAMEPAD_BACK) ? 0x80 : 0;
+		state->rgbButtons[7] = (pad->wButtons & XINPUT_GAMEPAD_START) ? 0x80 : 0;
+		state->rgbButtons[8] = (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB) ? 0x80 : 0;
+		state->rgbButtons[9] = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) ? 0x80 : 0;
 	}
 
 	void CheckRawInputDevices()

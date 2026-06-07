@@ -5,7 +5,7 @@ class CDirectInput8A : public IDirectInput8A, public CDirectInput8
 private:	
 	CDirectInputDeviceMouse8A* mouseDevice;
 	CDirectInputDeviceKeyboard8A* keyboardDevice;
-	CDirectInputDeviceGamepad8A* gamepadDevice;
+	CDirectInputDeviceGamepad8A* gamepadDevices[4];
 
 	DIDEVICEINSTANCEA mouseDeviceInfo = {};
 	DIDEVICEINSTANCEA keyboardDeviceInfo = {};
@@ -18,7 +18,10 @@ public:
 	{	
 		mouseDevice= new CDirectInputDeviceMouse8A();
 		keyboardDevice=new CDirectInputDeviceKeyboard8A();
-		gamepadDevice = new CDirectInputDeviceGamepad8A();
+		for (DWORD i = 0; i < 4; i++)
+		{
+			gamepadDevices[i] = new CDirectInputDeviceGamepad8A(i);
+		}
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(GUID* riid, LPVOID* ppvObj)
@@ -81,6 +84,15 @@ public:
 			return DI_OK;
 		}
 
+		DWORD gamepadIndex = diGlobalsInstance->GetXInputControllerIndex(rguid);
+		if (gamepadIndex < 4 && diGlobalsInstance->IsXInputControllerConnected(gamepadIndex))
+		{
+			diGlobalsInstance->LogA("CreateDevice() for XInput gamepad %lu", __FILE__, __LINE__, gamepadIndex);
+
+			*lplpDirectInputDevice = gamepadDevices[gamepadIndex];
+			return DI_OK;
+		}
+
 		diGlobalsInstance->LogA("CreateDevice() rejecting unsupported rguid=%x-%x-%x-%x",__FILE__,__LINE__, rguid->Data1, rguid->Data2, rguid->Data3, rguid->Data4);
 		return DIERR_DEVICENOTREG;
 	}
@@ -110,6 +122,26 @@ public:
 			{
 				diGlobalsInstance->LogA("EnumDevices stopped (due to DIENUM_STOP)", __FILE__, __LINE__);
 				return DI_OK;
+			}
+		}
+
+		if ((dwDevType == DI8DEVCLASS_ALL) || (dwDevType == DI8DEVCLASS_GAMECTRL) || (dwDevType == DI8DEVTYPE_GAMEPAD) || (dwDevType == DI8DEVTYPE_JOYSTICK))
+		{
+			for (DWORD i = 0; i < 4; i++)
+			{
+				if (!diGlobalsInstance->IsXInputControllerConnected(i))
+				{
+					continue;
+				}
+
+				diGlobalsInstance->LogA("EnumDevices: Returning XInput Gamepad %lu", __FILE__, __LINE__, i);
+
+				gamepadDevices[i]->GetDeviceInfo(&gamepadDeviceInfo);
+				if (lpCallback(&gamepadDeviceInfo, pvRef) == DIENUM_STOP)
+				{
+					diGlobalsInstance->LogA("EnumDevices stopped (due to DIENUM_STOP)", __FILE__, __LINE__);
+					return DI_OK;
+				}
 			}
 		}
 

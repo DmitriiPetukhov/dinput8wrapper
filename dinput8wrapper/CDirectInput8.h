@@ -157,6 +157,12 @@ public:
 			return DI_OK;
 		}
 
+		DWORD gamepadIndex = diGlobalsInstance->GetXInputControllerIndex(rguidInstance);
+		if (gamepadIndex < 4 && diGlobalsInstance->IsXInputControllerConnected(gamepadIndex))
+		{
+			return DI_OK;
+		}
+
 		return DI_NOTATTACHED;
 	}
 

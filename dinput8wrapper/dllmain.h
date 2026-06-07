@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <objbase.h>
 #include <strsafe.h>
+#include <xinput.h>
 #include "dinput8.h"
 
 #include "hid.h"
