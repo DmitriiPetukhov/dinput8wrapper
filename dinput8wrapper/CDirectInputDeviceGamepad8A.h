@@ -178,7 +178,6 @@ public:
 			objectInfo.guidType = *axes[i].guid;
 			objectInfo.dwOfs = axes[i].offset;
 			objectInfo.dwType = type;
-			objectInfo.dwFlags = DIDOI_GUIDISUSAGE;
 			StringCbCopyA(objectInfo.tszName, MAX_PATH, axes[i].name);
 			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
 			{
@@ -193,7 +192,6 @@ public:
 			objectInfo.guidType = GUID_POV;
 			objectInfo.dwOfs = DIJOFS_POV(0);
 			objectInfo.dwType = DIDFT_POV;
-			objectInfo.dwFlags = DIDOI_GUIDISUSAGE;
 			StringCbCopyA(objectInfo.tszName, MAX_PATH, "POV");
 			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
 			{
@@ -214,7 +212,6 @@ public:
 			objectInfo.guidType = GUID_Button;
 			objectInfo.dwOfs = DIJOFS_BUTTON(i);
 			objectInfo.dwType = type;
-			objectInfo.dwFlags = DIDOI_GUIDISUSAGE;
 			StringCbPrintfA(objectInfo.tszName, MAX_PATH, "Button %i", i + 1);
 			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
 			{
