@@ -6,9 +6,6 @@ private:
 	DWORD dikMapping[256];
 	const wchar_t* dikNames[256];
 	CRITICAL_SECTION critSect;
-	CRITICAL_SECTION logCritSect;
-	HANDLE logFile = INVALID_HANDLE_VALUE;
-	bool logFileOpenAttempted = false;
 
 public:
 
@@ -44,42 +41,6 @@ public:
 
 	DIJOYSTATE2* gamepadState = new DIJOYSTATE2();
 
-	bool EnsureLogFileOpen()
-	{
-		if (logFile != INVALID_HANDLE_VALUE)
-		{
-			return true;
-		}
-
-		if (logFileOpenAttempted)
-		{
-			return false;
-		}
-
-		logFileOpenAttempted = true;
-
-		char logPath[MAX_PATH];
-		DWORD pathLength = GetModuleFileNameA(DllHModule, logPath, MAX_PATH);
-		if (pathLength == 0 || pathLength >= MAX_PATH)
-		{
-			return false;
-		}
-
-		for (DWORD i = pathLength; i > 0; i--)
-		{
-			if (logPath[i - 1] == '\\' || logPath[i - 1] == '/')
-			{
-				logPath[i] = '\0';
-				break;
-			}
-		}
-
-		StringCbCatA(logPath, MAX_PATH, "dinput8wrapper.log");
-
-		logFile = CreateFileA(logPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		return logFile != INVALID_HANDLE_VALUE;
-	}
-
 	void LogA(LPCSTR LogLine, LPCTSTR file, int line, ...)
 	{
 		int flen = strlen(file) - 1;
@@ -100,22 +61,11 @@ public:
 		char tmp[4096];
 		StringCbPrintfA(tmp, 4096, "[dinput8][%s:%u] %s\r\n",filePtr,line,tmp2);
 		OutputDebugStringA(tmp);
-
-		EnterCriticalSection(&logCritSect);
-		{
-			if (EnsureLogFileOpen())
-			{
-				DWORD bytesWritten = 0;
-				WriteFile(logFile, tmp, (DWORD)strlen(tmp), &bytesWritten, NULL);
-			}
-		}
-		LeaveCriticalSection(&logCritSect);
 	}
 
 	CDirectInput8Globals()
 	{
 		InitializeCriticalSection(&critSect);
-		InitializeCriticalSection(&logCritSect);
 				
 		ZeroMemory(keyStates, sizeof(keyStates));
 		ZeroMemory(gameKeyStates, sizeof(gameKeyStates));

@@ -33,22 +33,20 @@ public:
 			return false;
 		}
 
-		if ((requestedFlags & DIDFT_AXIS) && (objectType & DIDFT_AXIS))
+		DWORD requestedType = requestedFlags & 0xFF;
+		DWORD objectTypeFlags = objectType & 0xFF;
+
+		if (requestedType == objectTypeFlags)
 		{
 			return true;
 		}
 
-		if ((requestedFlags & DIDFT_ABSAXIS) && (objectType & DIDFT_ABSAXIS))
+		if (requestedType == DIDFT_AXIS && (objectTypeFlags == DIDFT_ABSAXIS || objectTypeFlags == DIDFT_RELAXIS))
 		{
 			return true;
 		}
 
-		if ((requestedFlags & DIDFT_BUTTON) && (objectType & DIDFT_BUTTON))
-		{
-			return true;
-		}
-
-		if ((requestedFlags & DIDFT_POV) && (objectType & DIDFT_POV))
+		if (requestedType == DIDFT_BUTTON && (objectTypeFlags == DIDFT_PSHBUTTON || objectTypeFlags == DIDFT_TGLBUTTON))
 		{
 			return true;
 		}
@@ -191,16 +189,6 @@ public:
 		if (!rguidProp || !pdiph)
 		{
 			return DIERR_INVALIDPARAM;
-		}
-
-		if ((ULONG_PTR)rguidProp == 1 || // DIPROP_BUFFERSIZE
-			(ULONG_PTR)rguidProp == 2 || // DIPROP_AXISMODE
-			(ULONG_PTR)rguidProp == 4 || // DIPROP_RANGE
-			(ULONG_PTR)rguidProp == 5 || // DIPROP_DEADZONE
-			(ULONG_PTR)rguidProp == 6 || // DIPROP_SATURATION
-			(ULONG_PTR)rguidProp == 9)   // DIPROP_AUTOCENTER
-		{
-			return DI_OK;
 		}
 
 		return DIERR_UNSUPPORTED;
