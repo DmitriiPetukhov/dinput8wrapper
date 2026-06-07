@@ -2,7 +2,7 @@
 
 class CDirectInput8Globals
 {
-private:	
+private:
 	DWORD dikMapping[256];
 	const wchar_t* dikNames[256];
 	CRITICAL_SECTION critSect;
@@ -618,115 +618,113 @@ public:
 			{
 				if (ShouldExposeDirectInputGamepads())
 				{
-				UINT preparsedDataBufferSize = 0;
-				if (GetRawInputDeviceInfo(raw->header.hDevice, RIDI_PREPARSEDDATA, NULL, &preparsedDataBufferSize) != 0)
-				{
-					LogA("GetRawInputDeviceInfo() with RIDI_PREPARSEDDATA failed!", __FILE__, __LINE__, raw->data.keyboard.VKey);
-				}
-
-				PHIDP_PREPARSED_DATA preparsedDataBuffer = (PHIDP_PREPARSED_DATA)malloc(preparsedDataBufferSize);
-				if (GetRawInputDeviceInfo(raw->header.hDevice, RIDI_PREPARSEDDATA, preparsedDataBuffer, &preparsedDataBufferSize) >= 0)
-				{
-					HIDP_CAPS* caps = new HIDP_CAPS();
-					NTSTATUS rv = HidP_GetCaps(preparsedDataBuffer, caps);
-					if (rv == HIDP_STATUS_SUCCESS)
+					UINT preparsedDataBufferSize = 0;
+					if (GetRawInputDeviceInfo(raw->header.hDevice, RIDI_PREPARSEDDATA, NULL, &preparsedDataBufferSize) != 0)
 					{
-
-						char tmp[1024];
-						wsprintfA(tmp, "usagePageA: %i (%x)\r\n", caps->UsagePage, caps->UsagePage);
-						OutputDebugStringA(tmp);
-
-						if (true)
+						LogA("GetRawInputDeviceInfo() with RIDI_PREPARSEDDATA failed!", __FILE__, __LINE__, raw->data.keyboard.VKey);
+					}
+					else if (preparsedDataBufferSize > 0)
+					{
+						PHIDP_PREPARSED_DATA preparsedDataBuffer = (PHIDP_PREPARSED_DATA)malloc(preparsedDataBufferSize);
+						if (preparsedDataBuffer)
 						{
-							HIDP_BUTTON_CAPS* buttonCaps = new HIDP_BUTTON_CAPS[caps->NumberInputButtonCaps];
-							USHORT ButtonCapsLength = caps->NumberInputButtonCaps;
-							NTSTATUS rv2 = HidP_GetButtonCaps(HidP_Input, buttonCaps, &ButtonCapsLength, preparsedDataBuffer);
-							if (rv == HIDP_STATUS_SUCCESS)
+							if (GetRawInputDeviceInfo(raw->header.hDevice, RIDI_PREPARSEDDATA, preparsedDataBuffer, &preparsedDataBufferSize) >= 0)
 							{
-								for (int buttonCapIndex = 0; buttonCapIndex < caps->NumberInputButtonCaps; buttonCapIndex++)
+								HIDP_CAPS caps = {};
+								NTSTATUS rv = HidP_GetCaps(preparsedDataBuffer, &caps);
+								if (rv == HIDP_STATUS_SUCCESS)
 								{
 									char tmp[1024];
-									wsprintfA(tmp, "usagePageB: %i\r\n", buttonCaps[buttonCapIndex].UsagePage);
+									wsprintfA(tmp, "usagePageA: %i (%x)\r\n", caps.UsagePage, caps.UsagePage);
 									OutputDebugStringA(tmp);
 
-									for (DWORD hidInputIndex = 0; hidInputIndex < raw->data.hid.dwCount; hidInputIndex++)
+									HIDP_BUTTON_CAPS* buttonCaps = new HIDP_BUTTON_CAPS[caps.NumberInputButtonCaps];
+									USHORT ButtonCapsLength = caps.NumberInputButtonCaps;
+									NTSTATUS rv2 = HidP_GetButtonCaps(HidP_Input, buttonCaps, &ButtonCapsLength, preparsedDataBuffer);
+									if (rv2 == HIDP_STATUS_SUCCESS)
 									{
-										PCHAR hidReportPtr = (PCHAR)&raw->data.hid.bRawData[0];
-										hidReportPtr += (hidInputIndex * raw->data.hid.dwSizeHid);
-
-										ULONG usageLength = 0;
-										NTSTATUS guResult = HidP_GetUsages(HidP_Input, buttonCaps->UsagePage, 0, NULL, &usageLength, preparsedDataBuffer, hidReportPtr, raw->data.hid.dwSizeHid);
-										if (guResult == HIDP_STATUS_BUFFER_TOO_SMALL)
+										for (USHORT buttonCapIndex = 0; buttonCapIndex < ButtonCapsLength; buttonCapIndex++)
 										{
-											USAGE* usages = new USAGE[usageLength];
+											wsprintfA(tmp, "usagePageB: %i\r\n", buttonCaps[buttonCapIndex].UsagePage);
+											OutputDebugStringA(tmp);
 
-											NTSTATUS guResult = HidP_GetUsages(HidP_Input, buttonCaps->UsagePage, 0, usages, &usageLength, preparsedDataBuffer, hidReportPtr, raw->data.hid.dwSizeHid);
-											if (guResult == HIDP_STATUS_SUCCESS)
+											for (DWORD hidInputIndex = 0; hidInputIndex < raw->data.hid.dwCount; hidInputIndex++)
 											{
-												for (ULONG usageIndex = 0; usageIndex <= usageLength; usageIndex++)
+												PCHAR hidReportPtr = (PCHAR)&raw->data.hid.bRawData[0];
+												hidReportPtr += (hidInputIndex * raw->data.hid.dwSizeHid);
+
+												ULONG usageLength = 0;
+												NTSTATUS guResult = HidP_GetUsages(HidP_Input, buttonCaps[buttonCapIndex].UsagePage, 0, NULL, &usageLength, preparsedDataBuffer, hidReportPtr, raw->data.hid.dwSizeHid);
+												if (guResult == HIDP_STATUS_BUFFER_TOO_SMALL)
 												{
+													USAGE* usages = new USAGE[usageLength];
 
-													if (buttonCaps->UsagePage == 0x09) // Gamepad
+													guResult = HidP_GetUsages(HidP_Input, buttonCaps[buttonCapIndex].UsagePage, 0, usages, &usageLength, preparsedDataBuffer, hidReportPtr, raw->data.hid.dwSizeHid);
+													if (guResult == HIDP_STATUS_SUCCESS)
 													{
-														if (usages[usageIndex] == 0x01) // A
+														for (ULONG usageIndex = 0; usageIndex < usageLength; usageIndex++)
 														{
-
+															LogA("Button pressed: %i (usagePage: %i)", __FILE__, __LINE__, usages[usageIndex], buttonCaps[buttonCapIndex].UsagePage);
 														}
 													}
+													else if (guResult == HIDP_STATUS_INVALID_REPORT_LENGTH)
+													{
+														LogA("HidP_GetUsages() failed with HIDP_STATUS_INVALID_REPORT_LENGTH", __FILE__, __LINE__);
+													}
+													else if (guResult == HIDP_STATUS_INVALID_REPORT_TYPE)
+													{
+														LogA("HidP_GetUsages() failed with HIDP_STATUS_INVALID_REPORT_TYPE", __FILE__, __LINE__);
+													}
+													else if (guResult == HIDP_STATUS_BUFFER_TOO_SMALL)
+													{
+														LogA("HidP_GetUsages() failed with HIDP_STATUS_BUFFER_TOO_SMALL", __FILE__, __LINE__);
+													}
+													else if (guResult == HIDP_STATUS_INCOMPATIBLE_REPORT_ID)
+													{
+														LogA("HidP_GetUsages() failed with HIDP_STATUS_INCOMPATIBLE_REPORT_ID", __FILE__, __LINE__);
+													}
+													else if (guResult == HIDP_STATUS_INVALID_PREPARSED_DATA)
+													{
+														LogA("HidP_GetUsages() failed with HIDP_STATUS_INVALID_PREPARSED_DATA", __FILE__, __LINE__);
+													}
+													else if (guResult == HIDP_STATUS_USAGE_NOT_FOUND)
+													{
+														LogA("HidP_GetUsages() failed with HIDP_STATUS_USAGE_NOT_FOUND", __FILE__, __LINE__);
+													}
+													else
+													{
+														LogA("HidP_GetUsages() failed with unknown return value: %x", __FILE__, __LINE__, guResult);
+													}
 
-													LogA("Button pressed: %i (usagePage: %i)", __FILE__, __LINE__, usages[usageIndex], buttonCaps->UsagePage);
+													delete[] usages;
 												}
 											}
-											else if (guResult == HIDP_STATUS_INVALID_REPORT_LENGTH)
-											{
-												LogA("HidP_GetUsages() failed with HIDP_STATUS_INVALID_REPORT_LENGTH", __FILE__, __LINE__);
-											}
-											else if (guResult == HIDP_STATUS_INVALID_REPORT_TYPE)
-											{
-												LogA("HidP_GetUsages() failed with HIDP_STATUS_INVALID_REPORT_TYPE", __FILE__, __LINE__);
-											}
-											else if (guResult == HIDP_STATUS_BUFFER_TOO_SMALL)
-											{
-												LogA("HidP_GetUsages() failed with HIDP_STATUS_BUFFER_TOO_SMALL", __FILE__, __LINE__);
-											}
-											else if (guResult == HIDP_STATUS_INCOMPATIBLE_REPORT_ID)
-											{
-												LogA("HidP_GetUsages() failed with HIDP_STATUS_INCOMPATIBLE_REPORT_ID", __FILE__, __LINE__);
-											}
-											else if (guResult == HIDP_STATUS_INVALID_PREPARSED_DATA)
-											{
-												LogA("HidP_GetUsages() failed with HIDP_STATUS_INVALID_PREPARSED_DATA", __FILE__, __LINE__);
-											}
-											else if (guResult == HIDP_STATUS_USAGE_NOT_FOUND)
-											{
-												LogA("HidP_GetUsages() failed with HIDP_STATUS_USAGE_NOT_FOUND", __FILE__, __LINE__);
-											}
-											else {
-												LogA("HidP_GetUsages() failed with unknown return value: %x", __FILE__, __LINE__, guResult);
-											}
-
-											delete usages;
 										}
 									}
+									else
+									{
+										LogA("HidP_GetButtonCaps() failed", __FILE__, __LINE__);
+									}
+
+									delete[] buttonCaps;
+								}
+								else if (rv == HIDP_STATUS_INVALID_PREPARSED_DATA)
+								{
+									LogA("HidP_GetButtonCaps() failed with HIDP_STATUS_INVALID_PREPARSED_DATA", __FILE__, __LINE__);
+								}
+								else
+								{
+									LogA("HidP_GetButtonCaps() failed with rv: %x", __FILE__, __LINE__, rv);
 								}
 							}
-							else {
-								LogA("HidP_GetButtonCaps() failed", __FILE__, __LINE__);
-
+							else
+							{
+								LogA("GetRawInputDeviceInfo() failed", __FILE__, __LINE__);
 							}
+
+							free(preparsedDataBuffer);
 						}
 					}
-					else if (rv == HIDP_STATUS_INVALID_PREPARSED_DATA)
-					{
-						LogA("HidP_GetButtonCaps() failed with HIDP_STATUS_INVALID_PREPARSED_DATA", __FILE__, __LINE__);
-					}
-					else {
-						LogA("HidP_GetButtonCaps() failed with rv: %x", __FILE__, __LINE__, rv);
-					}
-				}
-				else {
-					LogA("GetRawInputDeviceInfo() failed", __FILE__, __LINE__);
-				}
 				}
 			}
 			else

@@ -163,7 +163,7 @@ public:
 			return DI_OK;
 		}
 
-		return DI_NOTATTACHED;
+		return DIERR_NOTATTACHED;
 	}
 
 	HRESULT STDMETHODCALLTYPE Base_RunControlPanel(HWND hwndOwner, DWORD dwFlags)

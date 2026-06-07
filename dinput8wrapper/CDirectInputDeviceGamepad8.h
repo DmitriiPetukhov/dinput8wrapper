@@ -126,9 +126,10 @@ public:
 
 		if (!diGlobalsInstance->IsXInputControllerConnected(xinputUserIndex))
 		{
-			return DI_NOTATTACHED;
+			return DIERR_NOTATTACHED;
 		}
 
+		HRESULT result = DI_OK;
 		diGlobalsInstance->Lock();
 		{
 			diGlobalsInstance->PopulateJoystickStateFromXInput(xinputUserIndex, diGlobalsInstance->gamepadState);
@@ -143,12 +144,12 @@ public:
 			}
 			else {
 				diGlobalsInstance->LogA("GamepadDevice->GetDeviceState(): Unsupported cbData: %i", __FILE__, __LINE__,cbData);
-				return DIERR_UNSUPPORTED;
+				result = DIERR_UNSUPPORTED;
 			}
 		}
 		diGlobalsInstance->Unlock();
 
-		return DI_OK;
+		return result;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Base_GetDeviceData(DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD dwFlags) {
