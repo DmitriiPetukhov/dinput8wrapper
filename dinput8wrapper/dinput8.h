@@ -226,6 +226,8 @@ DEFINE_GUID2(GUID_XAxis            , 0xA36D02E0, 0xC9F3, 0x11CF, 0xBF, 0xC7, 0x4
 
 #define DI_OK                           S_OK
 #define DIERR_INVALIDPARAM              E_INVALIDARG
+#define DI_NOTATTACHED                  S_FALSE
+#define DIERR_DEVICENOTREG              REGDB_E_CLASSNOTREG
 #define DIERR_UNSUPPORTED               E_NOTIMPL
 #define DIERR_INPUTLOST					0x8007001E
 #define DI_NOEFFECT                     S_FALSE

@@ -54,6 +54,18 @@ public:
 	/*** IDirectInput8W methods ***/
 	virtual HRESULT STDMETHODCALLTYPE CreateDevice(GUID* rguid, LPDIRECTINPUTDEVICE8W* lplpDirectInputDevice, LPUNKNOWN pUnkOuter)
 	{
+		if (!lplpDirectInputDevice)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		*lplpDirectInputDevice = nullptr;
+
+		if (!rguid)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
 		if (IsEqualIID(GUID_SysMouse, *rguid))
 		{
 			diGlobalsInstance->LogA("CreateDevice() for GUID_SysMouse", __FILE__, __LINE__);
@@ -68,17 +80,10 @@ public:
 			*lplpDirectInputDevice = keyboardDevice;
 			return DI_OK;
 		}
-		else if ((diGlobalsInstance->enableGamepadSupport) && (IsEqualIID(GUID_Xbox360Controller, *rguid)))
-		{
-			diGlobalsInstance->LogA("CreateDevice() for GUID_Xbox360Controller", __FILE__, __LINE__);
 
-			*lplpDirectInputDevice = gamepadDevice;
-			return DI_OK;
-		}
-		
-		diGlobalsInstance->LogA("CreateDevice() for rguid=%x-%x-%x-%x", __FILE__, __LINE__, rguid->Data1, rguid->Data2, rguid->Data3, rguid->Data4);
+		diGlobalsInstance->LogA("CreateDevice() rejecting unsupported rguid=%x-%x-%x-%x", __FILE__, __LINE__, rguid->Data1, rguid->Data2, rguid->Data3, rguid->Data4);
 
-		return E_ABORT;
+		return DIERR_DEVICENOTREG;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EnumDevices(DWORD dwDevType, LPDIENUMDEVICESCALLBACKW lpCallback, LPVOID pvRef, DWORD dwFlags)
@@ -106,21 +111,6 @@ public:
 			{
 				diGlobalsInstance->LogA("EnumDevices stopped (due to DIENUM_STOP)", __FILE__, __LINE__);
 				return DI_OK;
-			}
-		}
-
-		if (diGlobalsInstance->enableGamepadSupport)
-		{
-			if ((dwDevType == DI8DEVCLASS_ALL) || (dwDevType == DI8DEVCLASS_GAMECTRL))
-			{
-				diGlobalsInstance->LogA("EnumDevices: Returning Gamepad-Device", __FILE__, __LINE__);
-
-				gamepadDevice->GetDeviceInfo(&gamepadDeviceInfo);
-				if (lpCallback(&gamepadDeviceInfo, pvRef) == DIENUM_STOP)
-				{
-					diGlobalsInstance->LogA("EnumDevices stopped (due to DIENUM_STOP)", __FILE__, __LINE__);
-					return DI_OK;
-				}
 			}
 		}
 

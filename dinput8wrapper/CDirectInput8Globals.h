@@ -11,6 +11,11 @@ public:
 
 	bool enableGamepadSupport = false;
 
+	bool ShouldExposeDirectInputGamepads() const
+	{
+		return false;
+	}
+
 	// Sequence number for keyboard actions
 	DWORD dwSequence;
 
@@ -408,8 +413,10 @@ public:
 					keyStates[keyMapped] = (BYTE)dwData;
 				}
 			}
-			else if ((raw->header.dwType == RIM_TYPEHID) && (this->enableGamepadSupport)) // Gamepads/Joysticks
+			else if (raw->header.dwType == RIM_TYPEHID) // Gamepads/Joysticks
 			{
+				if (ShouldExposeDirectInputGamepads())
+				{
 				UINT preparsedDataBufferSize = 0;
 				if (GetRawInputDeviceInfo(raw->header.hDevice, RIDI_PREPARSEDDATA, NULL, &preparsedDataBufferSize) != 0)
 				{
@@ -518,6 +525,7 @@ public:
 				}
 				else {
 					LogA("GetRawInputDeviceInfo() failed", __FILE__, __LINE__);
+				}
 				}
 			}
 			else
