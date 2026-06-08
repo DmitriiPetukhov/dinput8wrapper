@@ -1,5 +1,7 @@
 #pragma once
 
+#include <math.h>
+
 struct XInputRumbleFrame
 {
 	WORD left;
@@ -57,6 +59,79 @@ private:
 		}
 
 		return 0;
+	}
+
+	double ClampStrength(double strength)
+	{
+		if (strength < 0.0)
+		{
+			return 0.0;
+		}
+
+		return strength > 1.0 ? 1.0 : strength;
+	}
+
+	double ClampSignedMagnitude(double magnitude)
+	{
+		if (magnitude < -10000.0)
+		{
+			return -10000.0;
+		}
+
+		if (magnitude > 10000.0)
+		{
+			return 10000.0;
+		}
+
+		return magnitude;
+	}
+
+	double EvaluatePeriodicStrength(ULONGLONG elapsedUs)
+	{
+		DIPERIODIC* params = (DIPERIODIC*)effect.lpvTypeSpecificParams;
+		double period = params->dwPeriod ? (double)params->dwPeriod : 100000.0;
+		double phase = fmod((double)elapsedUs, period) / period;
+		phase += params->dwPhase / 36000.0;
+		phase = phase - floor(phase);
+
+		double wave = 0.0;
+		if (IsEqualIID(effectGuid, GUID_Sine))
+		{
+			wave = sin(phase * 6.283185307179586);
+		}
+		else if (IsEqualIID(effectGuid, GUID_Square))
+		{
+			wave = phase < 0.5 ? 1.0 : -1.0;
+		}
+		else if (IsEqualIID(effectGuid, GUID_Triangle))
+		{
+			wave = phase < 0.5 ? (phase * 4.0 - 1.0) : (3.0 - phase * 4.0);
+		}
+		else if (IsEqualIID(effectGuid, GUID_SawtoothDown))
+		{
+			wave = 1.0 - phase * 2.0;
+		}
+		else
+		{
+			wave = phase * 2.0 - 1.0;
+		}
+
+		double magnitude = params->lOffset + (wave * min(params->dwMagnitude, (DWORD)10000));
+		return fabs(ClampSignedMagnitude(magnitude)) / 10000.0;
+	}
+
+	double EvaluateRampStrength(ULONGLONG elapsedUs)
+	{
+		DIRAMPFORCE* params = (DIRAMPFORCE*)effect.lpvTypeSpecificParams;
+		double durationUs = effect.dwDuration == INFINITE || effect.dwDuration == 0 ? 1000000.0 : (double)effect.dwDuration;
+		double position = elapsedUs / durationUs;
+		if (position > 1.0)
+		{
+			position = 1.0;
+		}
+
+		double magnitude = params->lStart + ((params->lEnd - params->lStart) * position);
+		return fabs(ClampSignedMagnitude(magnitude)) / 10000.0;
 	}
 
 	HRESULT CopyEffectParameters(LPCDIEFFECT lpeff)
@@ -198,6 +273,7 @@ public:
 		}
 
 		diGlobalsInstance->RecomputeAndApplyRumble(userIndex);
+		diGlobalsInstance->EnsureHapticsThreadStarted();
 		return DI_OK;
 	}
 
@@ -257,15 +333,29 @@ public:
 
 		double gain = ClampGain(effect.dwGain) / 10000.0;
 		double strength = 0.0;
+		ULONGLONG elapsedUs = (nowMs - startMs) * 1000;
 
 		if (IsEqualIID(effectGuid, GUID_ConstantForce))
 		{
 			DICONSTANTFORCE* params = (DICONSTANTFORCE*)effect.lpvTypeSpecificParams;
 			strength = AbsMagnitude(params->lMagnitude) / 10000.0;
 		}
+		else if (IsEqualIID(effectGuid, GUID_RampForce))
+		{
+			strength = EvaluateRampStrength(elapsedUs);
+		}
+		else if (IsEqualIID(effectGuid, GUID_Sine) ||
+			IsEqualIID(effectGuid, GUID_Square) ||
+			IsEqualIID(effectGuid, GUID_Triangle) ||
+			IsEqualIID(effectGuid, GUID_SawtoothUp) ||
+			IsEqualIID(effectGuid, GUID_SawtoothDown))
+		{
+			strength = EvaluatePeriodicStrength(elapsedUs);
+		}
 
-		WORD left = (WORD)(strength * gain * 65535.0);
-		WORD right = (WORD)(strength * gain * 45000.0);
+		strength = ClampStrength(strength);
+		WORD left = (WORD)min(65535.0, strength * gain * 65535.0);
+		WORD right = (WORD)min(65535.0, strength * gain * 45000.0);
 		frame.left = left;
 		frame.right = right;
 		return frame;
@@ -274,6 +364,23 @@ public:
 	DWORD GetUserIndex()
 	{
 		return userIndex;
+	}
+
+	bool IsActive()
+	{
+		return active;
+	}
+
+	bool HasExpired(ULONGLONG nowMs)
+	{
+		if (!active || effect.dwDuration == INFINITE)
+		{
+			return false;
+		}
+
+		DWORD playIterations = iterations == 0 ? 1 : iterations;
+		ULONGLONG elapsedUs = (nowMs - startMs) * 1000;
+		return elapsedUs >= ((ULONGLONG)effect.dwDuration * playIterations);
 	}
 };
 
@@ -305,6 +412,11 @@ inline HRESULT CDirectInput8Globals::RegisterActiveEffect(CDirectInputEffectXInp
 		{
 			result = DIERR_INVALIDPARAM;
 		}
+
+		if (hapticsWakeEvent)
+		{
+			SetEvent(hapticsWakeEvent);
+		}
 	}
 	Unlock();
 
@@ -334,8 +446,25 @@ inline void CDirectInput8Globals::UnregisterActiveEffect(CDirectInputEffectXInpu
 				break;
 			}
 		}
+
+		if (hapticsWakeEvent)
+		{
+			SetEvent(hapticsWakeEvent);
+		}
 	}
 	Unlock();
+
+	if (activeEffectCount == 0 && hapticsThreadRunning)
+	{
+		if (GetCurrentThreadId() == hapticsThreadId)
+		{
+			hapticsThreadRunning = false;
+		}
+		else
+		{
+			StopHapticsThread();
+		}
+	}
 }
 
 inline void CDirectInput8Globals::RecomputeAndApplyRumble(DWORD userIndex)
@@ -402,4 +531,106 @@ inline bool CDirectInput8Globals::IsControllerForceFeedbackMuted(DWORD userIndex
 	}
 
 	return controllerForceFeedbackPaused[userIndex] || !controllerForceFeedbackActuatorsEnabled[userIndex];
+}
+
+inline void CDirectInput8Globals::EnsureHapticsThreadStarted()
+{
+	if (hapticsThreadRunning)
+	{
+		if (hapticsWakeEvent)
+		{
+			SetEvent(hapticsWakeEvent);
+		}
+
+		return;
+	}
+
+	hapticsThreadRunning = true;
+	hapticsThread = CreateThread(NULL, 0, HapticsThreadProc, this, 0, &hapticsThreadId);
+	if (!hapticsThread)
+	{
+		hapticsThreadRunning = false;
+		hapticsThreadId = 0;
+	}
+}
+
+inline void CDirectInput8Globals::StopHapticsThread()
+{
+	if (!hapticsThreadRunning && !hapticsThread)
+	{
+		return;
+	}
+
+	hapticsThreadRunning = false;
+	if (hapticsWakeEvent)
+	{
+		SetEvent(hapticsWakeEvent);
+	}
+
+	if (hapticsThread && GetCurrentThreadId() != hapticsThreadId)
+	{
+		WaitForSingleObject(hapticsThread, 1000);
+		CloseHandle(hapticsThread);
+	}
+
+	hapticsThread = NULL;
+	hapticsThreadId = 0;
+}
+
+inline void CDirectInput8Globals::UpdateAllActiveRumble()
+{
+	CDirectInputEffectXInput* effects[32];
+	DWORD effectCount = 0;
+	bool touchedControllers[4] = {};
+	ULONGLONG nowMs = GetTickCount64();
+
+	Lock();
+	{
+		effectCount = activeEffectCount;
+		for (DWORD i = 0; i < effectCount; i++)
+		{
+			effects[i] = activeEffects[i];
+			if (effects[i] && effects[i]->GetUserIndex() < 4)
+			{
+				touchedControllers[effects[i]->GetUserIndex()] = true;
+			}
+		}
+	}
+	Unlock();
+
+	for (DWORD i = 0; i < effectCount; i++)
+	{
+		if (!effects[i])
+		{
+			continue;
+		}
+
+		DWORD userIndex = effects[i]->GetUserIndex();
+		if (!IsXInputControllerConnected(userIndex) || effects[i]->HasExpired(nowMs))
+		{
+			effects[i]->Stop();
+			StopControllerVibration(userIndex);
+			touchedControllers[userIndex] = true;
+		}
+	}
+
+	for (DWORD i = 0; i < 4; i++)
+	{
+		if (touchedControllers[i])
+		{
+			RecomputeAndApplyRumble(i);
+		}
+	}
+}
+
+inline DWORD WINAPI CDirectInput8Globals::HapticsThreadProc(LPVOID context)
+{
+	CDirectInput8Globals* globals = (CDirectInput8Globals*)context;
+	while (globals->hapticsThreadRunning)
+	{
+		globals->UpdateAllActiveRumble();
+		WaitForSingleObject(globals->hapticsWakeEvent, 20);
+	}
+
+	return 0;
 }

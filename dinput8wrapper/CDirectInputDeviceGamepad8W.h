@@ -224,17 +224,36 @@ public:
 			return DIERR_INVALIDPARAM;
 		}
 
-		if (dwEffType == 0 || DIEFT_GETTYPE(dwEffType) == DIEFT_CONSTANTFORCE)
+		struct EffectInfo { const GUID* guid; DWORD type; const wchar_t* name; };
+		EffectInfo effects[] = {
+			{ &GUID_ConstantForce, DIEFT_CONSTANTFORCE, L"XInput Constant Force" },
+			{ &GUID_RampForce, DIEFT_RAMPFORCE, L"XInput Ramp Force" },
+			{ &GUID_Sine, DIEFT_PERIODIC, L"XInput Sine" },
+			{ &GUID_Square, DIEFT_PERIODIC, L"XInput Square" },
+			{ &GUID_Triangle, DIEFT_PERIODIC, L"XInput Triangle" },
+			{ &GUID_SawtoothUp, DIEFT_PERIODIC, L"XInput Sawtooth Up" },
+			{ &GUID_SawtoothDown, DIEFT_PERIODIC, L"XInput Sawtooth Down" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(effects); i++)
 		{
+			if (dwEffType != 0 && DIEFT_GETTYPE(dwEffType) != effects[i].type)
+			{
+				continue;
+			}
+
 			DIEFFECTINFOW info = {};
 			info.dwSize = sizeof(DIEFFECTINFOW);
-			info.guid = GUID_ConstantForce;
-			info.dwEffType = DIEFT_CONSTANTFORCE;
+			info.guid = *effects[i].guid;
+			info.dwEffType = effects[i].type;
 			info.dwStaticParams = DIEP_TYPESPECIFICPARAMS;
 			info.dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
-			StringCbCopyW(info.tszName, MAX_PATH, L"XInput Constant Force");
+			StringCbCopyW(info.tszName, MAX_PATH, effects[i].name);
 
-			lpCallback(&info, pvRef);
+			if (lpCallback(&info, pvRef) == DIENUM_STOP)
+			{
+				break;
+			}
 		}
 
 		return DI_OK;
@@ -249,20 +268,35 @@ public:
 			return DIERR_INVALIDPARAM;
 		}
 
-		if (!IsEqualIID(*rguid, GUID_ConstantForce))
+		struct EffectInfo { const GUID* guid; DWORD type; const wchar_t* name; };
+		EffectInfo effects[] = {
+			{ &GUID_ConstantForce, DIEFT_CONSTANTFORCE, L"XInput Constant Force" },
+			{ &GUID_RampForce, DIEFT_RAMPFORCE, L"XInput Ramp Force" },
+			{ &GUID_Sine, DIEFT_PERIODIC, L"XInput Sine" },
+			{ &GUID_Square, DIEFT_PERIODIC, L"XInput Square" },
+			{ &GUID_Triangle, DIEFT_PERIODIC, L"XInput Triangle" },
+			{ &GUID_SawtoothUp, DIEFT_PERIODIC, L"XInput Sawtooth Up" },
+			{ &GUID_SawtoothDown, DIEFT_PERIODIC, L"XInput Sawtooth Down" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(effects); i++)
 		{
-			return DIERR_UNSUPPORTED;
+			if (!IsEqualIID(*rguid, *effects[i].guid))
+			{
+				continue;
+			}
+
+			ZeroMemory(pdei, sizeof(DIEFFECTINFOW));
+			pdei->dwSize = sizeof(DIEFFECTINFOW);
+			pdei->guid = *effects[i].guid;
+			pdei->dwEffType = effects[i].type;
+			pdei->dwStaticParams = DIEP_TYPESPECIFICPARAMS;
+			pdei->dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
+			StringCbCopyW(pdei->tszName, MAX_PATH, effects[i].name);
+			return DI_OK;
 		}
 
-		ZeroMemory(pdei, sizeof(DIEFFECTINFOW));
-		pdei->dwSize = sizeof(DIEFFECTINFOW);
-		pdei->guid = GUID_ConstantForce;
-		pdei->dwEffType = DIEFT_CONSTANTFORCE;
-		pdei->dwStaticParams = DIEP_TYPESPECIFICPARAMS;
-		pdei->dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
-		StringCbCopyW(pdei->tszName, MAX_PATH, L"XInput Constant Force");
-
-		return DI_OK;
+		return DIERR_UNSUPPORTED;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EnumEffectsInFile(LPCWSTR lpszFileName, LPDIENUMEFFECTSINFILECALLBACK pec, LPVOID pvRef, DWORD dwFlags)

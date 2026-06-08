@@ -23,6 +23,10 @@ public:
 	DWORD activeEffectCount;
 	bool controllerForceFeedbackPaused[4];
 	bool controllerForceFeedbackActuatorsEnabled[4];
+	HANDLE hapticsThread;
+	HANDLE hapticsWakeEvent;
+	bool hapticsThreadRunning;
+	DWORD hapticsThreadId;
 
 	bool ShouldExposeDirectInputGamepads()
 	{
@@ -87,6 +91,10 @@ public:
 		{
 			controllerForceFeedbackActuatorsEnabled[i] = true;
 		}
+		hapticsThread = NULL;
+		hapticsWakeEvent = CreateEventA(NULL, FALSE, FALSE, NULL);
+		hapticsThreadRunning = false;
+		hapticsThreadId = 0;
 
 		dwSequence = 1;
 
@@ -416,6 +424,8 @@ public:
 
 	void StopAllControllerVibration()
 	{
+		StopHapticsThread();
+
 		for (DWORD i = 0; i < 4; i++)
 		{
 			StopControllerVibration(i);
@@ -428,6 +438,10 @@ public:
 	void SetControllerForceFeedbackPaused(DWORD userIndex, bool paused);
 	void SetControllerForceFeedbackActuatorsEnabled(DWORD userIndex, bool enabled);
 	bool IsControllerForceFeedbackMuted(DWORD userIndex);
+	void EnsureHapticsThreadStarted();
+	void StopHapticsThread();
+	void UpdateAllActiveRumble();
+	static DWORD WINAPI HapticsThreadProc(LPVOID context);
 
 	bool IsXInputControllerConnected(DWORD userIndex)
 	{

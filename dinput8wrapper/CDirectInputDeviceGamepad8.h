@@ -62,6 +62,18 @@ public:
 		return false;
 	}
 
+	bool IsSupportedEffectGuid(GUID* rguid)
+	{
+		return rguid &&
+			(IsEqualIID(*rguid, GUID_ConstantForce) ||
+				IsEqualIID(*rguid, GUID_RampForce) ||
+				IsEqualIID(*rguid, GUID_Sine) ||
+				IsEqualIID(*rguid, GUID_Square) ||
+				IsEqualIID(*rguid, GUID_Triangle) ||
+				IsEqualIID(*rguid, GUID_SawtoothUp) ||
+				IsEqualIID(*rguid, GUID_SawtoothDown));
+	}
+
 	DWORD GetSourceOffsetForObject(const DIOBJECTDATAFORMAT* objectFormat)
 	{
 		DWORD objectType = objectFormat->dwType;
@@ -162,7 +174,16 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->Release()", __FILE__, __LINE__);
 
-		refCount--;
+		if (refCount > 0)
+		{
+			refCount--;
+		}
+
+		if (refCount == 0)
+		{
+			ReleaseAllCreatedEffects();
+			diGlobalsInstance->SetControllerVibration(xinputUserIndex, 0, 0);
+		}
 
 		return refCount;
 	}
@@ -213,6 +234,8 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE Base_Unacquire() {
 		diGlobalsInstance->LogA("GamepadDevice->Unacquire()", __FILE__, __LINE__);
 
+		StopAllCreatedEffects(false);
+		diGlobalsInstance->SetControllerVibration(xinputUserIndex, 0, 0);
 		this->isAcquired = false;
 
 		return DI_OK;
@@ -327,7 +350,7 @@ public:
 		}
 
 		*ppdeff = NULL;
-		if (!IsEqualIID(*rguid, GUID_ConstantForce))
+		if (!IsSupportedEffectGuid(rguid))
 		{
 			return DIERR_UNSUPPORTED;
 		}
@@ -476,5 +499,22 @@ public:
 				createdEffects[i]->Stop();
 			}
 		}
+	}
+
+	void ReleaseAllCreatedEffects()
+	{
+		for (DWORD i = 0; i < createdEffectCount; i++)
+		{
+			if (!createdEffects[i])
+			{
+				continue;
+			}
+
+			createdEffects[i]->Unload();
+			createdEffects[i]->Release();
+			createdEffects[i] = NULL;
+		}
+
+		createdEffectCount = 0;
 	}
 };
