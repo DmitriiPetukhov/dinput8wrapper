@@ -10,9 +10,11 @@ private:
 public:
 
 	typedef DWORD(WINAPI* XInputGetStateProc)(DWORD, XINPUT_STATE*);
+	typedef DWORD(WINAPI* XInputSetStateProc)(DWORD, XINPUT_VIBRATION*);
 
 	HMODULE xinputModule = NULL;
 	XInputGetStateProc xinputGetState = NULL;
+	XInputSetStateProc xinputSetState = NULL;
 
 	GUID gamepadInstanceGuids[4];
 
@@ -359,6 +361,7 @@ public:
 			if (xinputModule)
 			{
 				xinputGetState = (XInputGetStateProc)GetProcAddress(xinputModule, "XInputGetState");
+				xinputSetState = (XInputSetStateProc)GetProcAddress(xinputModule, "XInputSetState");
 				if (xinputGetState)
 				{
 					LogA("Loaded %s for gamepad support", __FILE__, __LINE__, dllNames[i]);
@@ -367,11 +370,43 @@ public:
 
 				FreeLibrary(xinputModule);
 				xinputModule = NULL;
+				xinputSetState = NULL;
 			}
 		}
 
 		LogA("XInput is not available; gamepad support disabled", __FILE__, __LINE__);
 		return false;
+	}
+
+	bool CanVibrate(DWORD userIndex)
+	{
+		return userIndex < 4 && EnsureXInputLoaded() && xinputSetState;
+	}
+
+	HRESULT SetControllerVibration(DWORD userIndex, WORD left, WORD right)
+	{
+		if (!CanVibrate(userIndex))
+		{
+			return DIERR_NOTATTACHED;
+		}
+
+		XINPUT_VIBRATION vibration = {};
+		vibration.wLeftMotorSpeed = left;
+		vibration.wRightMotorSpeed = right;
+		return xinputSetState(userIndex, &vibration) == ERROR_SUCCESS ? DI_OK : DIERR_NOTATTACHED;
+	}
+
+	void StopControllerVibration(DWORD userIndex)
+	{
+		SetControllerVibration(userIndex, 0, 0);
+	}
+
+	void StopAllControllerVibration()
+	{
+		for (DWORD i = 0; i < 4; i++)
+		{
+			StopControllerVibration(i);
+		}
 	}
 
 	bool IsXInputControllerConnected(DWORD userIndex)
