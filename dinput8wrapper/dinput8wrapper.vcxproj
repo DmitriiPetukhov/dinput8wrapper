@@ -107,6 +107,7 @@
     <ClInclude Include="CDirectInputDeviceMouse8A.h" />
     <ClInclude Include="CDirectInputDeviceKeyboard8A.h" />
     <ClInclude Include="CDirectInputDeviceMouse8W.h" />
+    <ClInclude Include="CDirectInputEffectXInput.h" />
     <ClInclude Include="dinput8.h" />
     <ClInclude Include="hid.h" />
     <ClInclude Include="dllmain.h" />

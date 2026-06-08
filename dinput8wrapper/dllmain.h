@@ -27,6 +27,7 @@ static HMODULE DllHModule;
 #include "CDirectInputDeviceKeyboard8A.h"
 #include "CDirectInputDeviceKeyboard8W.h"
 
+#include "CDirectInputEffectXInput.h"
 #include "CDirectInputDeviceGamepad8.h"
 #include "CDirectInputDeviceGamepad8A.h"
 #include "CDirectInputDeviceGamepad8W.h"
