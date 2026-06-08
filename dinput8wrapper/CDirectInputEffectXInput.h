@@ -346,19 +346,60 @@ inline void CDirectInput8Globals::RecomputeAndApplyRumble(DWORD userIndex)
 
 	Lock();
 	{
-		for (DWORD i = 0; i < activeEffectCount; i++)
+		if (!IsControllerForceFeedbackMuted(userIndex))
 		{
-			if (!activeEffects[i] || activeEffects[i]->GetUserIndex() != userIndex)
+			for (DWORD i = 0; i < activeEffectCount; i++)
 			{
-				continue;
-			}
+				if (!activeEffects[i] || activeEffects[i]->GetUserIndex() != userIndex)
+				{
+					continue;
+				}
 
-			XInputRumbleFrame frame = activeEffects[i]->Evaluate(nowMs);
-			left = max(left, frame.left);
-			right = max(right, frame.right);
+				XInputRumbleFrame frame = activeEffects[i]->Evaluate(nowMs);
+				left = max(left, frame.left);
+				right = max(right, frame.right);
+			}
 		}
 	}
 	Unlock();
 
 	SetControllerVibration(userIndex, left, right);
+}
+
+inline void CDirectInput8Globals::SetControllerForceFeedbackPaused(DWORD userIndex, bool paused)
+{
+	if (userIndex >= 4)
+	{
+		return;
+	}
+
+	Lock();
+	{
+		controllerForceFeedbackPaused[userIndex] = paused;
+	}
+	Unlock();
+}
+
+inline void CDirectInput8Globals::SetControllerForceFeedbackActuatorsEnabled(DWORD userIndex, bool enabled)
+{
+	if (userIndex >= 4)
+	{
+		return;
+	}
+
+	Lock();
+	{
+		controllerForceFeedbackActuatorsEnabled[userIndex] = enabled;
+	}
+	Unlock();
+}
+
+inline bool CDirectInput8Globals::IsControllerForceFeedbackMuted(DWORD userIndex)
+{
+	if (userIndex >= 4)
+	{
+		return true;
+	}
+
+	return controllerForceFeedbackPaused[userIndex] || !controllerForceFeedbackActuatorsEnabled[userIndex];
 }

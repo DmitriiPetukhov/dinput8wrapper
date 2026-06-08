@@ -241,6 +241,24 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->EnumEffects()", __FILE__, __LINE__);
 
+		if (!lpCallback)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		if (dwEffType == 0 || DIEFT_GETTYPE(dwEffType) == DIEFT_CONSTANTFORCE)
+		{
+			DIEFFECTINFOA info = {};
+			info.dwSize = sizeof(DIEFFECTINFOA);
+			info.guid = GUID_ConstantForce;
+			info.dwEffType = DIEFT_CONSTANTFORCE;
+			info.dwStaticParams = DIEP_TYPESPECIFICPARAMS;
+			info.dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
+			StringCbCopyA(info.tszName, MAX_PATH, "XInput Constant Force");
+
+			lpCallback(&info, pvRef);
+		}
+
 		return DI_OK;
 	}
 
@@ -248,7 +266,25 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->GetEffectInfo()", __FILE__, __LINE__);
 
-		return E_NOTIMPL;
+		if (!pdei || !rguid || pdei->dwSize < sizeof(DIEFFECTINFOA))
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		if (!IsEqualIID(*rguid, GUID_ConstantForce))
+		{
+			return DIERR_UNSUPPORTED;
+		}
+
+		ZeroMemory(pdei, sizeof(DIEFFECTINFOA));
+		pdei->dwSize = sizeof(DIEFFECTINFOA);
+		pdei->guid = GUID_ConstantForce;
+		pdei->dwEffType = DIEFT_CONSTANTFORCE;
+		pdei->dwStaticParams = DIEP_TYPESPECIFICPARAMS;
+		pdei->dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
+		StringCbCopyA(pdei->tszName, MAX_PATH, "XInput Constant Force");
+
+		return DI_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EnumEffectsInFile(LPCSTR lpszFileName, LPDIENUMEFFECTSINFILECALLBACK pec, LPVOID pvRef, DWORD dwFlags)

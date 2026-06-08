@@ -171,13 +171,13 @@ public:
 	virtual HRESULT STDMETHODCALLTYPE Base_GetCapabilities(LPDIDEVCAPS lpDIDevCaps) {
 		diGlobalsInstance->LogA("GamepadDevice->GetCapabilities()", __FILE__, __LINE__);
 
-		lpDIDevCaps->dwFlags = DIDC_ATTACHED | DIDC_EMULATED;
+		lpDIDevCaps->dwFlags = DIDC_ATTACHED | DIDC_EMULATED | DIDC_FORCEFEEDBACK;
 		lpDIDevCaps->dwDevType = this->dwDevType;
 		lpDIDevCaps->dwAxes = 6;
 		lpDIDevCaps->dwButtons = 10;
 		lpDIDevCaps->dwPOVs = 1;
-		lpDIDevCaps->dwFFSamplePeriod = 0;
-		lpDIDevCaps->dwFFMinTimeResolution = 0;
+		lpDIDevCaps->dwFFSamplePeriod = 20000;
+		lpDIDevCaps->dwFFMinTimeResolution = 20000;
 		lpDIDevCaps->dwFirmwareRevision = 0;
 		lpDIDevCaps->dwHardwareRevision = 0;
 		lpDIDevCaps->dwFFDriverVersion = 0;
@@ -361,19 +361,80 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->GetForceFeedbackState()", __FILE__, __LINE__);
 
-		return E_NOTIMPL;
+		if (!pdwOut)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		*pdwOut = 0;
+		if (createdEffectCount == 0)
+		{
+			*pdwOut |= DIGFFS_EMPTY;
+		}
+
+		if (!forceFeedbackActuatorsEnabled)
+		{
+			*pdwOut |= DIGFFS_POWEROFF;
+		}
+
+		return DI_OK;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Base_SendForceFeedbackCommand(DWORD dwFlags)
 	{
 		diGlobalsInstance->LogA("GamepadDevice->SendForceFeedbackCommand()", __FILE__, __LINE__);
 
-		return E_NOTIMPL;
+		switch (dwFlags)
+		{
+		case DISFFC_STOPALL:
+			StopAllCreatedEffects(false);
+			return diGlobalsInstance->SetControllerVibration(xinputUserIndex, 0, 0);
+		case DISFFC_RESET:
+			StopAllCreatedEffects(true);
+			forceFeedbackPaused = false;
+			forceFeedbackActuatorsEnabled = true;
+			diGlobalsInstance->SetControllerForceFeedbackPaused(xinputUserIndex, false);
+			diGlobalsInstance->SetControllerForceFeedbackActuatorsEnabled(xinputUserIndex, true);
+			return diGlobalsInstance->SetControllerVibration(xinputUserIndex, 0, 0);
+		case DISFFC_PAUSE:
+			forceFeedbackPaused = true;
+			diGlobalsInstance->SetControllerForceFeedbackPaused(xinputUserIndex, true);
+			return diGlobalsInstance->SetControllerVibration(xinputUserIndex, 0, 0);
+		case DISFFC_CONTINUE:
+			forceFeedbackPaused = false;
+			diGlobalsInstance->SetControllerForceFeedbackPaused(xinputUserIndex, false);
+			diGlobalsInstance->RecomputeAndApplyRumble(xinputUserIndex);
+			return DI_OK;
+		case DISFFC_SETACTUATORSOFF:
+			forceFeedbackActuatorsEnabled = false;
+			diGlobalsInstance->SetControllerForceFeedbackActuatorsEnabled(xinputUserIndex, false);
+			return diGlobalsInstance->SetControllerVibration(xinputUserIndex, 0, 0);
+		case DISFFC_SETACTUATORSON:
+			forceFeedbackActuatorsEnabled = true;
+			diGlobalsInstance->SetControllerForceFeedbackActuatorsEnabled(xinputUserIndex, true);
+			diGlobalsInstance->RecomputeAndApplyRumble(xinputUserIndex);
+			return DI_OK;
+		default:
+			return DIERR_UNSUPPORTED;
+		}
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE Base_EnumCreatedEffectObjects(LPDIENUMCREATEDEFFECTOBJECTSCALLBACK lpCallback, LPVOID pvRef, DWORD fl)
 	{
 		diGlobalsInstance->LogA("GamepadDevice->EnumCreatedEffectObjects()", __FILE__, __LINE__);
+
+		if (!lpCallback)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		for (DWORD i = 0; i < createdEffectCount; i++)
+		{
+			if (createdEffects[i] && lpCallback(createdEffects[i], pvRef) == DIENUM_STOP)
+			{
+				break;
+			}
+		}
 
 		return DI_OK;
 	}
@@ -395,5 +456,25 @@ public:
 		diGlobalsInstance->LogA("GamepadDevice->SendDeviceData()", __FILE__, __LINE__);
 
 		return E_NOTIMPL;
+	}
+
+	void StopAllCreatedEffects(bool unload)
+	{
+		for (DWORD i = 0; i < createdEffectCount; i++)
+		{
+			if (!createdEffects[i])
+			{
+				continue;
+			}
+
+			if (unload)
+			{
+				createdEffects[i]->Unload();
+			}
+			else
+			{
+				createdEffects[i]->Stop();
+			}
+		}
 	}
 };

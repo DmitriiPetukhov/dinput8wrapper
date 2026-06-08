@@ -21,6 +21,8 @@ public:
 	GUID gamepadInstanceGuids[4];
 	CDirectInputEffectXInput* activeEffects[32];
 	DWORD activeEffectCount;
+	bool controllerForceFeedbackPaused[4];
+	bool controllerForceFeedbackActuatorsEnabled[4];
 
 	bool ShouldExposeDirectInputGamepads()
 	{
@@ -80,6 +82,11 @@ public:
 		ZeroMemory(gamepadState, sizeof(DIJOYSTATE2));
 		ZeroMemory(activeEffects, sizeof(activeEffects));
 		activeEffectCount = 0;
+		ZeroMemory(controllerForceFeedbackPaused, sizeof(controllerForceFeedbackPaused));
+		for (DWORD i = 0; i < 4; i++)
+		{
+			controllerForceFeedbackActuatorsEnabled[i] = true;
+		}
 
 		dwSequence = 1;
 
@@ -418,6 +425,9 @@ public:
 	HRESULT RegisterActiveEffect(CDirectInputEffectXInput* effect);
 	void UnregisterActiveEffect(CDirectInputEffectXInput* effect);
 	void RecomputeAndApplyRumble(DWORD userIndex);
+	void SetControllerForceFeedbackPaused(DWORD userIndex, bool paused);
+	void SetControllerForceFeedbackActuatorsEnabled(DWORD userIndex, bool enabled);
+	bool IsControllerForceFeedbackMuted(DWORD userIndex);
 
 	bool IsXInputControllerConnected(DWORD userIndex)
 	{
