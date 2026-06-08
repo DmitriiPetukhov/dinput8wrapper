@@ -1,5 +1,7 @@
 #pragma once
 
+class CDirectInputEffectXInput;
+
 class CDirectInput8Globals
 {
 private:
@@ -17,6 +19,8 @@ public:
 	XInputSetStateProc xinputSetState = NULL;
 
 	GUID gamepadInstanceGuids[4];
+	CDirectInputEffectXInput* activeEffects[32];
+	DWORD activeEffectCount;
 
 	bool ShouldExposeDirectInputGamepads()
 	{
@@ -74,6 +78,8 @@ public:
 		ZeroMemory(mouseStateDeviceData, sizeof(DIMOUSESTATE));
 		ZeroMemory(mouseStateDeviceDataGame, sizeof(DIMOUSESTATE));
 		ZeroMemory(gamepadState, sizeof(DIJOYSTATE2));
+		ZeroMemory(activeEffects, sizeof(activeEffects));
+		activeEffectCount = 0;
 
 		dwSequence = 1;
 
@@ -408,6 +414,10 @@ public:
 			StopControllerVibration(i);
 		}
 	}
+
+	HRESULT RegisterActiveEffect(CDirectInputEffectXInput* effect);
+	void UnregisterActiveEffect(CDirectInputEffectXInput* effect);
+	void RecomputeAndApplyRumble(DWORD userIndex);
 
 	bool IsXInputControllerConnected(DWORD userIndex)
 	{

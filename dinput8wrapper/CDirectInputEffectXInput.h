@@ -190,12 +190,26 @@ public:
 		startMs = GetTickCount64();
 		downloaded = true;
 		active = true;
+		HRESULT hr = diGlobalsInstance->RegisterActiveEffect(this);
+		if (FAILED(hr))
+		{
+			active = false;
+			return hr;
+		}
+
+		diGlobalsInstance->RecomputeAndApplyRumble(userIndex);
 		return DI_OK;
 	}
 
 	HRESULT STDMETHODCALLTYPE Stop()
 	{
-		active = false;
+		if (active)
+		{
+			active = false;
+			diGlobalsInstance->UnregisterActiveEffect(this);
+			diGlobalsInstance->RecomputeAndApplyRumble(userIndex);
+		}
+
 		return DI_OK;
 	}
 
@@ -223,7 +237,7 @@ public:
 
 	HRESULT STDMETHODCALLTYPE Unload()
 	{
-		active = false;
+		Stop();
 		downloaded = false;
 		return DI_OK;
 	}
@@ -256,4 +270,95 @@ public:
 		frame.right = right;
 		return frame;
 	}
+
+	DWORD GetUserIndex()
+	{
+		return userIndex;
+	}
 };
+
+inline HRESULT CDirectInput8Globals::RegisterActiveEffect(CDirectInputEffectXInput* effect)
+{
+	if (!effect)
+	{
+		return DIERR_INVALIDPARAM;
+	}
+
+	HRESULT result = DI_OK;
+	bool found = false;
+	Lock();
+	{
+		for (DWORD i = 0; i < activeEffectCount; i++)
+		{
+			if (activeEffects[i] == effect)
+			{
+				found = true;
+				break;
+			}
+		}
+
+		if (!found && activeEffectCount < ARRAYSIZE(activeEffects))
+		{
+			activeEffects[activeEffectCount++] = effect;
+		}
+		else if (!found)
+		{
+			result = DIERR_INVALIDPARAM;
+		}
+	}
+	Unlock();
+
+	return result;
+}
+
+inline void CDirectInput8Globals::UnregisterActiveEffect(CDirectInputEffectXInput* effect)
+{
+	if (!effect)
+	{
+		return;
+	}
+
+	Lock();
+	{
+		for (DWORD i = 0; i < activeEffectCount; i++)
+		{
+			if (activeEffects[i] == effect)
+			{
+				for (DWORD j = i; j + 1 < activeEffectCount; j++)
+				{
+					activeEffects[j] = activeEffects[j + 1];
+				}
+
+				activeEffectCount--;
+				activeEffects[activeEffectCount] = NULL;
+				break;
+			}
+		}
+	}
+	Unlock();
+}
+
+inline void CDirectInput8Globals::RecomputeAndApplyRumble(DWORD userIndex)
+{
+	WORD left = 0;
+	WORD right = 0;
+	ULONGLONG nowMs = GetTickCount64();
+
+	Lock();
+	{
+		for (DWORD i = 0; i < activeEffectCount; i++)
+		{
+			if (!activeEffects[i] || activeEffects[i]->GetUserIndex() != userIndex)
+			{
+				continue;
+			}
+
+			XInputRumbleFrame frame = activeEffects[i]->Evaluate(nowMs);
+			left = max(left, frame.left);
+			right = max(right, frame.right);
+		}
+	}
+	Unlock();
+
+	SetControllerVibration(userIndex, left, right);
+}

@@ -9,6 +9,10 @@ public:
 	DWORD dwDevType;
 	DWORD xinputUserIndex;
 	bool isAcquired;
+	LPDIRECTINPUTEFFECT createdEffects[32];
+	DWORD createdEffectCount;
+	bool forceFeedbackPaused;
+	bool forceFeedbackActuatorsEnabled;
 
 	CDirectInputDeviceGamepad8(DWORD userIndex)
 	{
@@ -17,6 +21,10 @@ public:
 		refCount = 1;
 		xinputUserIndex = userIndex;
 		isAcquired = false;
+		ZeroMemory(createdEffects, sizeof(createdEffects));
+		createdEffectCount = 0;
+		forceFeedbackPaused = false;
+		forceFeedbackActuatorsEnabled = true;
 	}
 
 	bool ShouldEnumObject(DWORD requestedFlags, DWORD objectType)
@@ -313,7 +321,39 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->CreateEffect()", __FILE__, __LINE__);
 
-		return E_NOTIMPL;
+		if (!rguid || !ppdeff || punkOuter)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		*ppdeff = NULL;
+		if (!IsEqualIID(*rguid, GUID_ConstantForce))
+		{
+			return DIERR_UNSUPPORTED;
+		}
+
+		if (createdEffectCount >= ARRAYSIZE(createdEffects))
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		CDirectInputEffectXInput* effect = new CDirectInputEffectXInput(xinputUserIndex, rguid);
+		if (!effect)
+		{
+			return E_OUTOFMEMORY;
+		}
+
+		HRESULT hr = lpeff ? effect->SetParameters(lpeff, 0) : DI_OK;
+		if (FAILED(hr))
+		{
+			effect->Release();
+			return hr;
+		}
+
+		effect->AddRef();
+		createdEffects[createdEffectCount++] = effect;
+		*ppdeff = effect;
+		return DI_OK;
 	}
 
 
