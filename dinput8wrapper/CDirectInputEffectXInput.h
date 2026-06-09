@@ -32,6 +32,9 @@ private:
 	ULONGLONG startMs;
 	DWORD iterations;
 
+	static const DWORD kLeftMotorScale = 65535;
+	static const DWORD kRightMotorScale = 45000; // High-frequency motor is tuned lower because it can feel harsher.
+
 	DWORD ClampGain(DWORD gain)
 	{
 		return gain > 10000 ? 10000 : gain;
@@ -134,6 +137,11 @@ private:
 	double EvaluateRampStrength(ULONGLONG elapsedUs)
 	{
 		DIRAMPFORCE* params = (DIRAMPFORCE*)effect.lpvTypeSpecificParams;
+		if (effect.dwDuration != 0 && effect.dwDuration != INFINITE)
+		{
+			elapsedUs %= effect.dwDuration;
+		}
+
 		double durationUs = effect.dwDuration == INFINITE || effect.dwDuration == 0 ? 1000000.0 : (double)effect.dwDuration;
 		double position = elapsedUs / durationUs;
 		if (position > 1.0)
@@ -518,12 +526,24 @@ public:
 		return (flags & DIEP_START) ? Start(1, 0) : DI_OK;
 	}
 
-	HRESULT STDMETHODCALLTYPE Start(DWORD iterations, DWORD)
+	HRESULT STDMETHODCALLTYPE Start(DWORD iterations, DWORD flags)
 	{
+		if (iterations == 0)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		if ((flags & DIES_NODOWNLOAD) && !downloaded)
+		{
+			return DIERR_NOTDOWNLOADED;
+		}
+
 		if (!diGlobalsInstance->IsXInputControllerConnected(userIndex))
 		{
 			return DIERR_UNPLUGGED;
 		}
+
+		// XInput has no solo force-feedback concept; keep mixing for compatibility.
 
 		this->iterations = iterations;
 		startMs = GetTickCount64();
@@ -618,8 +638,9 @@ public:
 		}
 
 		strength = ClampStrength(strength);
-		WORD left = (WORD)min(65535.0, strength * gain * 65535.0);
-		WORD right = (WORD)min(65535.0, strength * gain * 45000.0);
+		// XInput rumble collapses signed DirectInput force magnitude into unsigned motor intensity.
+		WORD left = (WORD)min((double)kLeftMotorScale, strength * gain * kLeftMotorScale);
+		WORD right = (WORD)min((double)kLeftMotorScale, strength * gain * kRightMotorScale);
 		frame.left = left;
 		frame.right = right;
 		return frame;
@@ -637,14 +658,13 @@ public:
 
 	bool HasExpired(ULONGLONG nowMs)
 	{
-		if (!active || effect.dwDuration == INFINITE)
+		if (!active || effect.dwDuration == INFINITE || iterations == INFINITE)
 		{
 			return false;
 		}
 
-		DWORD playIterations = iterations == 0 ? 1 : iterations;
 		ULONGLONG elapsedUs = (nowMs - startMs) * 1000;
-		return elapsedUs >= ((ULONGLONG)effect.dwDuration * playIterations);
+		return elapsedUs >= ((ULONGLONG)effect.dwDuration * iterations);
 	}
 };
 
