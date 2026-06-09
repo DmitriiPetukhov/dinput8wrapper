@@ -11,7 +11,7 @@ struct XInputRumbleFrame
 class CDirectInputEffectXInput : public IDirectInputEffect
 {
 private:
-	ULONG refCount;
+	volatile LONG refCount;
 	DWORD userIndex;
 	GUID effectGuid;
 	DIEFFECT effect;
@@ -190,27 +190,37 @@ public:
 			return DIERR_INVALIDPARAM;
 		}
 
-		*ppvObj = this;
-		AddRef();
-		return S_OK;
+		*ppvObj = NULL;
+		if (!riid)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		if (IsEqualIID(*riid, IID_IUnknown) || IsEqualIID(*riid, IID_IDirectInputEffect))
+		{
+			*ppvObj = static_cast<IDirectInputEffect*>(this);
+			AddRef();
+			return DI_OK;
+		}
+
+		return DIERR_NOINTERFACE;
 	}
 
 	ULONG STDMETHODCALLTYPE AddRef()
 	{
-		refCount++;
-		return refCount;
+		return (ULONG)InterlockedIncrement(&refCount);
 	}
 
 	ULONG STDMETHODCALLTYPE Release()
 	{
-		refCount--;
-		ULONG currentRefCount = refCount;
+		LONG currentRefCount = InterlockedDecrement(&refCount);
 		if (currentRefCount == 0)
 		{
+			Stop();
 			delete this;
 		}
 
-		return currentRefCount;
+		return (ULONG)currentRefCount;
 	}
 
 	HRESULT STDMETHODCALLTYPE Initialize(HINSTANCE, DWORD, GUID*)
