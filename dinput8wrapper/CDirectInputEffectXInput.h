@@ -15,7 +15,18 @@ private:
 	DWORD userIndex;
 	GUID effectGuid;
 	DIEFFECT effect;
-	BYTE typeSpecificStorage[64];
+	union TypeSpecificStorage
+	{
+		DICONSTANTFORCE constantForce;
+		DIRAMPFORCE rampForce;
+		DIPERIODIC periodic;
+	};
+
+	TypeSpecificStorage typeSpecificStorage;
+	DWORD axesStorage[8];
+	LONG directionStorage[8];
+	DIENVELOPE envelopeStorage;
+	bool hasEnvelope;
 	bool active;
 	bool downloaded;
 	ULONGLONG startMs;
@@ -134,32 +145,137 @@ private:
 		return fabs(ClampSignedMagnitude(magnitude)) / 10000.0;
 	}
 
-	HRESULT CopyEffectParameters(LPCDIEFFECT lpeff)
+	DWORD NormalizeParameterFlags(DWORD flags)
+	{
+		DWORD paramFlags = flags & DIEP_ALLPARAMS;
+		return paramFlags == 0 ? DIEP_ALLPARAMS : paramFlags;
+	}
+
+	void ClearEffectPointers()
+	{
+		effect.rgdwAxes = NULL;
+		effect.rglDirection = NULL;
+		effect.lpEnvelope = NULL;
+		effect.lpvTypeSpecificParams = NULL;
+	}
+
+	HRESULT CopyTypeSpecificParams(LPCDIEFFECT lpeff)
+	{
+		DWORD expectedSize = ExpectedTypeSpecificSize();
+		if ((expectedSize != 0 && lpeff->cbTypeSpecificParams != expectedSize) ||
+			(lpeff->cbTypeSpecificParams != 0 && !lpeff->lpvTypeSpecificParams))
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		effect.cbTypeSpecificParams = lpeff->cbTypeSpecificParams;
+		effect.lpvTypeSpecificParams = NULL;
+		if (lpeff->cbTypeSpecificParams != 0)
+		{
+			memcpy(&typeSpecificStorage, lpeff->lpvTypeSpecificParams, lpeff->cbTypeSpecificParams);
+			effect.lpvTypeSpecificParams = &typeSpecificStorage;
+		}
+
+		return DI_OK;
+	}
+
+	HRESULT CopyAxes(LPCDIEFFECT lpeff)
+	{
+		if (lpeff->cAxes > ARRAYSIZE(axesStorage) || (lpeff->cAxes != 0 && !lpeff->rgdwAxes))
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		effect.cAxes = lpeff->cAxes;
+		effect.rgdwAxes = NULL;
+		if (lpeff->cAxes != 0)
+		{
+			memcpy(axesStorage, lpeff->rgdwAxes, sizeof(DWORD) * lpeff->cAxes);
+			effect.rgdwAxes = axesStorage;
+		}
+
+		return DI_OK;
+	}
+
+	HRESULT CopyDirection(LPCDIEFFECT lpeff)
+	{
+		DWORD directionCount = lpeff->cAxes != 0 ? lpeff->cAxes : effect.cAxes;
+		if (directionCount > ARRAYSIZE(directionStorage) || (directionCount != 0 && !lpeff->rglDirection))
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		effect.rglDirection = NULL;
+		if (directionCount != 0)
+		{
+			memcpy(directionStorage, lpeff->rglDirection, sizeof(LONG) * directionCount);
+			effect.rglDirection = directionStorage;
+		}
+
+		return DI_OK;
+	}
+
+	HRESULT CopyEnvelope(LPCDIEFFECT lpeff)
+	{
+		hasEnvelope = false;
+		effect.lpEnvelope = NULL;
+		if (!lpeff->lpEnvelope)
+		{
+			return DI_OK;
+		}
+
+		if (lpeff->lpEnvelope->dwSize < sizeof(DIENVELOPE))
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		envelopeStorage = *lpeff->lpEnvelope;
+		effect.lpEnvelope = &envelopeStorage;
+		hasEnvelope = true;
+		return DI_OK;
+	}
+
+	HRESULT CopyEffectParameters(LPCDIEFFECT lpeff, DWORD flags)
 	{
 		if (!lpeff || lpeff->dwSize < sizeof(DIEFFECT))
 		{
 			return DIERR_INVALIDPARAM;
 		}
 
-		DWORD expectedSize = ExpectedTypeSpecificSize();
-		if (lpeff->cbTypeSpecificParams > sizeof(typeSpecificStorage) ||
-			(expectedSize != 0 && lpeff->cbTypeSpecificParams != expectedSize) ||
-			(lpeff->cbTypeSpecificParams != 0 && !lpeff->lpvTypeSpecificParams))
+		DWORD paramFlags = NormalizeParameterFlags(flags);
+
+		if (paramFlags & DIEP_DURATION) effect.dwDuration = lpeff->dwDuration;
+		if (paramFlags & DIEP_SAMPLEPERIOD) effect.dwSamplePeriod = lpeff->dwSamplePeriod;
+		if (paramFlags & DIEP_GAIN) effect.dwGain = ClampGain(lpeff->dwGain);
+		if (paramFlags & DIEP_TRIGGERBUTTON)
 		{
-			return DIERR_INVALIDPARAM;
+			effect.dwTriggerButton = lpeff->dwTriggerButton == 0 ? DIEB_NOTRIGGER : lpeff->dwTriggerButton;
+		}
+		if (paramFlags & DIEP_TRIGGERREPEATINTERVAL) effect.dwTriggerRepeatInterval = lpeff->dwTriggerRepeatInterval;
+		if (paramFlags & DIEP_STARTDELAY) effect.dwStartDelay = lpeff->dwStartDelay;
+
+		if (paramFlags & DIEP_TYPESPECIFICPARAMS)
+		{
+			HRESULT hr = CopyTypeSpecificParams(lpeff);
+			if (FAILED(hr)) return hr;
 		}
 
-		effect = *lpeff;
-		effect.dwGain = ClampGain(effect.dwGain);
-		if (effect.dwTriggerButton == 0)
+		if (paramFlags & DIEP_AXES)
 		{
-			effect.dwTriggerButton = DIEB_NOTRIGGER;
+			HRESULT hr = CopyAxes(lpeff);
+			if (FAILED(hr)) return hr;
 		}
 
-		if (lpeff->cbTypeSpecificParams != 0)
+		if (paramFlags & DIEP_DIRECTION)
 		{
-			memcpy(typeSpecificStorage, lpeff->lpvTypeSpecificParams, lpeff->cbTypeSpecificParams);
-			effect.lpvTypeSpecificParams = typeSpecificStorage;
+			HRESULT hr = CopyDirection(lpeff);
+			if (FAILED(hr)) return hr;
+		}
+
+		if (paramFlags & DIEP_ENVELOPE)
+		{
+			HRESULT hr = CopyEnvelope(lpeff);
+			if (FAILED(hr)) return hr;
 		}
 
 		return DI_OK;
@@ -172,11 +288,16 @@ public:
 		this->userIndex = userIndex;
 		effectGuid = rguid ? *rguid : GUID_ConstantForce;
 		ZeroMemory(&effect, sizeof(effect));
-		ZeroMemory(typeSpecificStorage, sizeof(typeSpecificStorage));
+		ZeroMemory(&typeSpecificStorage, sizeof(typeSpecificStorage));
+		ZeroMemory(axesStorage, sizeof(axesStorage));
+		ZeroMemory(directionStorage, sizeof(directionStorage));
+		ZeroMemory(&envelopeStorage, sizeof(envelopeStorage));
 		effect.dwSize = sizeof(DIEFFECT);
 		effect.dwDuration = INFINITE;
 		effect.dwGain = 10000;
 		effect.dwTriggerButton = DIEB_NOTRIGGER;
+		ClearEffectPointers();
+		hasEnvelope = false;
 		active = false;
 		downloaded = false;
 		startMs = 0;
@@ -254,13 +375,17 @@ public:
 
 	HRESULT STDMETHODCALLTYPE SetParameters(LPCDIEFFECT lpeff, DWORD flags)
 	{
-		HRESULT hr = CopyEffectParameters(lpeff);
+		HRESULT hr = CopyEffectParameters(lpeff, flags);
 		if (FAILED(hr))
 		{
 			return hr;
 		}
 
-		downloaded = true;
+		if (!(flags & DIEP_NODOWNLOAD))
+		{
+			downloaded = true;
+		}
+
 		return (flags & DIEP_START) ? Start(1, 0) : DI_OK;
 	}
 
