@@ -690,6 +690,7 @@ inline HRESULT CDirectInput8Globals::RegisterActiveEffect(CDirectInputEffectXInp
 
 		if (!found && activeEffectCount < ARRAYSIZE(activeEffects))
 		{
+			effect->AddRef(); // active-list ownership
 			activeEffects[activeEffectCount++] = effect;
 		}
 		else if (!found)
@@ -714,12 +715,16 @@ inline void CDirectInput8Globals::UnregisterActiveEffect(CDirectInputEffectXInpu
 		return;
 	}
 
+	CDirectInputEffectXInput* removed = NULL;
+	bool shouldStopThread = false;
+
 	Lock();
 	{
 		for (DWORD i = 0; i < activeEffectCount; i++)
 		{
 			if (activeEffects[i] == effect)
 			{
+				removed = activeEffects[i];
 				for (DWORD j = i; j + 1 < activeEffectCount; j++)
 				{
 					activeEffects[j] = activeEffects[j + 1];
@@ -731,6 +736,8 @@ inline void CDirectInput8Globals::UnregisterActiveEffect(CDirectInputEffectXInpu
 			}
 		}
 
+		shouldStopThread = (activeEffectCount == 0 && hapticsThreadRunning);
+
 		if (hapticsWakeEvent)
 		{
 			SetEvent(hapticsWakeEvent);
@@ -738,16 +745,14 @@ inline void CDirectInput8Globals::UnregisterActiveEffect(CDirectInputEffectXInpu
 	}
 	Unlock();
 
-	if (activeEffectCount == 0 && hapticsThreadRunning)
+	if (removed)
 	{
-		if (GetCurrentThreadId() == hapticsThreadId)
-		{
-			hapticsThreadRunning = false;
-		}
-		else
-		{
-			StopHapticsThread();
-		}
+		removed->Release();
+	}
+
+	if (shouldStopThread)
+	{
+		StopHapticsThread();
 	}
 }
 
@@ -863,7 +868,7 @@ inline void CDirectInput8Globals::StopHapticsThread()
 
 inline void CDirectInput8Globals::UpdateAllActiveRumble()
 {
-	CDirectInputEffectXInput* effects[32];
+	CDirectInputEffectXInput* effects[32] = {};
 	DWORD effectCount = 0;
 	bool touchedControllers[4] = {};
 	ULONGLONG nowMs = GetTickCount64();
@@ -874,9 +879,13 @@ inline void CDirectInput8Globals::UpdateAllActiveRumble()
 		for (DWORD i = 0; i < effectCount; i++)
 		{
 			effects[i] = activeEffects[i];
-			if (effects[i] && effects[i]->GetUserIndex() < 4)
+			if (effects[i])
 			{
-				touchedControllers[effects[i]->GetUserIndex()] = true;
+				effects[i]->AddRef(); // worker snapshot ownership
+				if (effects[i]->GetUserIndex() < 4)
+				{
+					touchedControllers[effects[i]->GetUserIndex()] = true;
+				}
 			}
 		}
 	}
@@ -894,8 +903,13 @@ inline void CDirectInput8Globals::UpdateAllActiveRumble()
 		{
 			effects[i]->Stop();
 			StopControllerVibration(userIndex);
-			touchedControllers[userIndex] = true;
+			if (userIndex < ARRAYSIZE(touchedControllers))
+			{
+				touchedControllers[userIndex] = true;
+			}
 		}
+
+		effects[i]->Release();
 	}
 
 	for (DWORD i = 0; i < 4; i++)
