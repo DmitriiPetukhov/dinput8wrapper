@@ -281,6 +281,103 @@ private:
 		return DI_OK;
 	}
 
+	HRESULT CopyTypeSpecificParamsToCaller(LPDIEFFECT lpeff)
+	{
+		DWORD requiredSize = effect.cbTypeSpecificParams;
+		if (requiredSize == 0)
+		{
+			lpeff->cbTypeSpecificParams = 0;
+			return DI_OK;
+		}
+
+		if (!lpeff->lpvTypeSpecificParams)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		if (lpeff->cbTypeSpecificParams < requiredSize)
+		{
+			lpeff->cbTypeSpecificParams = requiredSize;
+			return DIERR_MOREDATA;
+		}
+
+		memcpy(lpeff->lpvTypeSpecificParams, &typeSpecificStorage, requiredSize);
+		lpeff->cbTypeSpecificParams = requiredSize;
+		return DI_OK;
+	}
+
+	HRESULT CopyAxesToCaller(LPDIEFFECT lpeff)
+	{
+		DWORD requiredAxes = effect.cAxes;
+		if (requiredAxes == 0)
+		{
+			lpeff->cAxes = 0;
+			return DI_OK;
+		}
+
+		if (!lpeff->rgdwAxes)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		if (lpeff->cAxes < requiredAxes)
+		{
+			lpeff->cAxes = requiredAxes;
+			return DIERR_MOREDATA;
+		}
+
+		memcpy(lpeff->rgdwAxes, axesStorage, sizeof(DWORD) * requiredAxes);
+		lpeff->cAxes = requiredAxes;
+		return DI_OK;
+	}
+
+	HRESULT CopyDirectionToCaller(LPDIEFFECT lpeff)
+	{
+		DWORD requiredDirections = effect.cAxes;
+		if (requiredDirections == 0)
+		{
+			return DI_OK;
+		}
+
+		if (!lpeff->rglDirection)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		if (lpeff->cAxes < requiredDirections)
+		{
+			lpeff->cAxes = requiredDirections;
+			return DIERR_MOREDATA;
+		}
+
+		memcpy(lpeff->rglDirection, directionStorage, sizeof(LONG) * requiredDirections);
+		lpeff->cAxes = requiredDirections;
+		return DI_OK;
+	}
+
+	HRESULT CopyEnvelopeToCaller(LPDIEFFECT lpeff)
+	{
+		if (!hasEnvelope)
+		{
+			lpeff->lpEnvelope = NULL;
+			return DI_OK;
+		}
+
+		if (!lpeff->lpEnvelope)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		if (lpeff->lpEnvelope->dwSize < sizeof(DIENVELOPE))
+		{
+			lpeff->lpEnvelope->dwSize = sizeof(DIENVELOPE);
+			return DIERR_MOREDATA;
+		}
+
+		*lpeff->lpEnvelope = envelopeStorage;
+		return DI_OK;
+	}
+
 public:
 	CDirectInputEffectXInput(DWORD userIndex, GUID* rguid)
 	{
@@ -360,7 +457,7 @@ public:
 		return DI_OK;
 	}
 
-	HRESULT STDMETHODCALLTYPE GetParameters(LPDIEFFECT lpeff, DWORD)
+	HRESULT STDMETHODCALLTYPE GetParameters(LPDIEFFECT lpeff, DWORD flags)
 	{
 		if (!lpeff || lpeff->dwSize < sizeof(DIEFFECT))
 		{
@@ -368,7 +465,39 @@ public:
 		}
 
 		DWORD callerSize = lpeff->dwSize;
-		*lpeff = effect;
+		DWORD paramFlags = NormalizeParameterFlags(flags);
+
+		if (paramFlags & DIEP_DURATION) lpeff->dwDuration = effect.dwDuration;
+		if (paramFlags & DIEP_SAMPLEPERIOD) lpeff->dwSamplePeriod = effect.dwSamplePeriod;
+		if (paramFlags & DIEP_GAIN) lpeff->dwGain = effect.dwGain;
+		if (paramFlags & DIEP_TRIGGERBUTTON) lpeff->dwTriggerButton = effect.dwTriggerButton;
+		if (paramFlags & DIEP_TRIGGERREPEATINTERVAL) lpeff->dwTriggerRepeatInterval = effect.dwTriggerRepeatInterval;
+		if (paramFlags & DIEP_STARTDELAY) lpeff->dwStartDelay = effect.dwStartDelay;
+
+		if (paramFlags & DIEP_TYPESPECIFICPARAMS)
+		{
+			HRESULT hr = CopyTypeSpecificParamsToCaller(lpeff);
+			if (FAILED(hr)) return hr;
+		}
+
+		if (paramFlags & DIEP_AXES)
+		{
+			HRESULT hr = CopyAxesToCaller(lpeff);
+			if (FAILED(hr)) return hr;
+		}
+
+		if (paramFlags & DIEP_DIRECTION)
+		{
+			HRESULT hr = CopyDirectionToCaller(lpeff);
+			if (FAILED(hr)) return hr;
+		}
+
+		if (paramFlags & DIEP_ENVELOPE)
+		{
+			HRESULT hr = CopyEnvelopeToCaller(lpeff);
+			if (FAILED(hr)) return hr;
+		}
+
 		lpeff->dwSize = callerSize;
 		return DI_OK;
 	}
