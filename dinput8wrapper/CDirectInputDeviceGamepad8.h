@@ -373,7 +373,7 @@ public:
 			return hr;
 		}
 
-		effect->AddRef();
+		effect->AddRef(); // device-owned reference
 		createdEffects[createdEffectCount++] = effect;
 		*ppdeff = effect;
 		return DI_OK;
@@ -453,7 +453,17 @@ public:
 
 		for (DWORD i = 0; i < createdEffectCount; i++)
 		{
-			if (createdEffects[i] && lpCallback(createdEffects[i], pvRef) == DIENUM_STOP)
+			LPDIRECTINPUTEFFECT effect = createdEffects[i];
+			if (!effect)
+			{
+				continue;
+			}
+
+			effect->AddRef(); // callback reference
+			BOOL callbackResult = lpCallback(effect, pvRef);
+			effect->Release();
+
+			if (callbackResult == DIENUM_STOP)
 			{
 				break;
 			}
