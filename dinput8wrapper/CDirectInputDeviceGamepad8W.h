@@ -7,17 +7,17 @@ private:
 
 public:
 
-	CDirectInputDeviceGamepad8W() : CDirectInputDeviceGamepad8()
+	CDirectInputDeviceGamepad8W(DWORD userIndex) : CDirectInputDeviceGamepad8(userIndex)
 	{
 		gamepadDeviceInfo = new DIDEVICEINSTANCEW();
-		ZeroMemory(gamepadDeviceInfo, sizeof(DIDEVICEINSTANCEA));
-		gamepadDeviceInfo->dwSize = sizeof(DIDEVICEINSTANCEA);
-		gamepadDeviceInfo->guidInstance = GUID_Xbox360Controller;
+		ZeroMemory(gamepadDeviceInfo, sizeof(DIDEVICEINSTANCEW));
+		gamepadDeviceInfo->dwSize = sizeof(DIDEVICEINSTANCEW);
+		gamepadDeviceInfo->guidInstance = diGlobalsInstance->gamepadInstanceGuids[userIndex];
 		gamepadDeviceInfo->guidProduct = GUID_Xbox360Controller;
 		gamepadDeviceInfo->dwDevType = DIDEVTYPE_HID | DI8DEVTYPE_GAMEPAD | (DI8DEVTYPEGAMEPAD_STANDARD << 8);
 		gamepadDeviceInfo->wUsage = HID_USAGE_GENERIC_GAMEPAD;
 		gamepadDeviceInfo->wUsagePage = HID_USAGE_PAGE_GENERIC;
-		StringCbCopyW(gamepadDeviceInfo->tszInstanceName, 260, L"Controller (Gamepad XBox360)");
+		StringCbPrintfW(gamepadDeviceInfo->tszInstanceName, 260, L"Controller (Gamepad XBox360) %lu", userIndex + 1);
 		StringCbCopyW(gamepadDeviceInfo->tszProductName, 260, L"Controller (Gamepad XBox360)");
 
 		this->dwDevType = gamepadDeviceInfo->dwDevType;
@@ -131,7 +131,71 @@ public:
 
 	virtual HRESULT STDMETHODCALLTYPE EnumObjects(LPDIENUMDEVICEOBJECTSCALLBACKW lpCallback, LPVOID pvRef, DWORD dwFlags) {
 
-		diGlobalsInstance->LogA("GamepadDevice->EnumObjects()", __FILE__, __LINE__);
+		diGlobalsInstance->LogA("GamepadDevice->EnumObjects(), dwFlags: %x", __FILE__, __LINE__, dwFlags);
+
+		struct AxisInfo { const GUID* guid; DWORD offset; const wchar_t* name; };
+		AxisInfo axes[] = {
+			{ &GUID_XAxis, DIJOFS_X, L"X-Axis" },
+			{ &GUID_YAxis, DIJOFS_Y, L"Y-Axis" },
+			{ &GUID_ZAxis, DIJOFS_Z, L"Left Trigger" },
+			{ &GUID_RxAxis, DIJOFS_RX, L"Rx-Axis" },
+			{ &GUID_RyAxis, DIJOFS_RY, L"Ry-Axis" },
+			{ &GUID_RzAxis, DIJOFS_RZ, L"Right Trigger" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(axes); i++)
+		{
+			DWORD type = DIDFT_ABSAXIS | DIDFT_MAKEINSTANCE(i);
+			if (!ShouldEnumObject(dwFlags, type))
+			{
+				continue;
+			}
+
+			DIDEVICEOBJECTINSTANCEW objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEW);
+			objectInfo.guidType = *axes[i].guid;
+			objectInfo.dwOfs = axes[i].offset;
+			objectInfo.dwType = type;
+			StringCbCopyW(objectInfo.tszName, MAX_PATH, axes[i].name);
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
+		}
+
+		if (ShouldEnumObject(dwFlags, DIDFT_POV))
+		{
+			DIDEVICEOBJECTINSTANCEW objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEW);
+			objectInfo.guidType = GUID_POV;
+			objectInfo.dwOfs = DIJOFS_POV(0);
+			objectInfo.dwType = DIDFT_POV;
+			StringCbCopyW(objectInfo.tszName, MAX_PATH, L"POV");
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
+		}
+
+		for (int i = 0; i < 10; i++)
+		{
+			DWORD type = DIDFT_PSHBUTTON | DIDFT_MAKEINSTANCE(i);
+			if (!ShouldEnumObject(dwFlags, type))
+			{
+				continue;
+			}
+
+			DIDEVICEOBJECTINSTANCEW objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEW);
+			objectInfo.guidType = GUID_Button;
+			objectInfo.dwOfs = DIJOFS_BUTTON(i);
+			objectInfo.dwType = type;
+			StringCbPrintfW(objectInfo.tszName, MAX_PATH, L"Button %i", i + 1);
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
+		}
 
 		return DI_OK;
 	}
@@ -155,6 +219,43 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->EnumEffects()", __FILE__, __LINE__);
 
+		if (!lpCallback)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		struct EffectInfo { const GUID* guid; DWORD type; const wchar_t* name; };
+		EffectInfo effects[] = {
+			{ &GUID_ConstantForce, DIEFT_CONSTANTFORCE, L"XInput Constant Force" },
+			{ &GUID_RampForce, DIEFT_RAMPFORCE, L"XInput Ramp Force" },
+			{ &GUID_Sine, DIEFT_PERIODIC, L"XInput Sine" },
+			{ &GUID_Square, DIEFT_PERIODIC, L"XInput Square" },
+			{ &GUID_Triangle, DIEFT_PERIODIC, L"XInput Triangle" },
+			{ &GUID_SawtoothUp, DIEFT_PERIODIC, L"XInput Sawtooth Up" },
+			{ &GUID_SawtoothDown, DIEFT_PERIODIC, L"XInput Sawtooth Down" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(effects); i++)
+		{
+			if (dwEffType != 0 && DIEFT_GETTYPE(dwEffType) != effects[i].type)
+			{
+				continue;
+			}
+
+			DIEFFECTINFOW info = {};
+			info.dwSize = sizeof(DIEFFECTINFOW);
+			info.guid = *effects[i].guid;
+			info.dwEffType = effects[i].type;
+			info.dwStaticParams = DIEP_TYPESPECIFICPARAMS;
+			info.dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
+			StringCbCopyW(info.tszName, MAX_PATH, effects[i].name);
+
+			if (lpCallback(&info, pvRef) == DIENUM_STOP)
+			{
+				break;
+			}
+		}
+
 		return DI_OK;
 	}
 
@@ -162,7 +263,40 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->GetEffectInfo()", __FILE__, __LINE__);
 
-		return E_NOTIMPL;
+		if (!pdei || !rguid || pdei->dwSize < sizeof(DIEFFECTINFOW))
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		struct EffectInfo { const GUID* guid; DWORD type; const wchar_t* name; };
+		EffectInfo effects[] = {
+			{ &GUID_ConstantForce, DIEFT_CONSTANTFORCE, L"XInput Constant Force" },
+			{ &GUID_RampForce, DIEFT_RAMPFORCE, L"XInput Ramp Force" },
+			{ &GUID_Sine, DIEFT_PERIODIC, L"XInput Sine" },
+			{ &GUID_Square, DIEFT_PERIODIC, L"XInput Square" },
+			{ &GUID_Triangle, DIEFT_PERIODIC, L"XInput Triangle" },
+			{ &GUID_SawtoothUp, DIEFT_PERIODIC, L"XInput Sawtooth Up" },
+			{ &GUID_SawtoothDown, DIEFT_PERIODIC, L"XInput Sawtooth Down" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(effects); i++)
+		{
+			if (!IsEqualIID(*rguid, *effects[i].guid))
+			{
+				continue;
+			}
+
+			ZeroMemory(pdei, sizeof(DIEFFECTINFOW));
+			pdei->dwSize = sizeof(DIEFFECTINFOW);
+			pdei->guid = *effects[i].guid;
+			pdei->dwEffType = effects[i].type;
+			pdei->dwStaticParams = DIEP_TYPESPECIFICPARAMS;
+			pdei->dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
+			StringCbCopyW(pdei->tszName, MAX_PATH, effects[i].name);
+			return DI_OK;
+		}
+
+		return DIERR_UNSUPPORTED;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EnumEffectsInFile(LPCWSTR lpszFileName, LPDIENUMEFFECTSINFILECALLBACK pec, LPVOID pvRef, DWORD dwFlags)

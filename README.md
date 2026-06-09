@@ -9,9 +9,31 @@ Dependending on the number and type of physical/virtual "USB HID"-devices on the
 This wrapper returns a fixed keyboard-device and a fixed mouse-device in EnumDevices() and does not do any real device enumeration.
 
 ## Current state:
-* Only supports Keyboard and Mouse (gamepad-support in progress)
+* Supports keyboard and mouse through Raw Input.
+* Gamepad support exposes XInput controllers as DirectInput gamepads.
+* Force feedback for XInput gamepads is emulated through XInput rumble.
 * Does only implement a small subset of the DirectInput8-Interfaces (may not work with all games using DirectInput8)
 * 32-bit only (Is there any DirectInput8-game that requires x64?)
+
+### XInput force-feedback emulation
+
+Supported DirectInput effects:
+
+* ConstantForce
+* Sine, Square, Triangle, SawtoothUp, SawtoothDown
+* RampForce
+
+Unsupported DirectInput force-feedback fields such as direction vectors,
+envelopes, triggers, sample periods, and start delays are accepted when valid
+and safely stored or ignored where XInput has no matching behavior.
+
+Errors are reserved for invalid parameters, invalid memory or pointer cases,
+unsupported effect families, disconnected controllers, and operations that
+would be unsafe to approximate.
+
+DirectInput force-feedback output is reduced to XInput left and right motor
+rumble. True directional forces, custom force fields, and actuator-specific
+hardware behavior cannot be physically emulated.
 
 ## How to use / Installation
 * Copy the dinput8.dll (see  https://github.com/geeky/dinput8wrapper/releases) to the folder where your game has its main executable 

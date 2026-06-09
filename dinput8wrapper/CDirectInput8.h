@@ -91,8 +91,7 @@ public:
 	{
 		if (Msg == WM_CREATE)
 		{
-			RAWINPUTDEVICE Rid[4] = { 0 };
-			int ridLength = 2;
+			RAWINPUTDEVICE Rid[2] = { 0 };
 
 			//
 			Rid[0].usUsagePage = HID_USAGE_PAGE_GENERIC;
@@ -105,22 +104,7 @@ public:
 			Rid[1].dwFlags = 0;
 			Rid[1].hwndTarget = hWnd;		
 
-			if (diGlobalsInstance->enableGamepadSupport)
-			{
-				ridLength = 4;
-
-				Rid[2].usUsagePage = HID_USAGE_PAGE_GENERIC;
-				Rid[2].usUsage = HID_USAGE_GENERIC_JOYSTICK;
-				Rid[2].dwFlags = RIDEV_DEVNOTIFY;
-				Rid[2].hwndTarget = hWnd;
-
-				Rid[3].usUsagePage = HID_USAGE_PAGE_GENERIC;
-				Rid[3].usUsage = HID_USAGE_GENERIC_GAMEPAD;
-				Rid[3].dwFlags = RIDEV_DEVNOTIFY;
-				Rid[3].hwndTarget = hWnd;
-			}
-
-			if (RegisterRawInputDevices(Rid, ridLength, sizeof(Rid[0])) == FALSE) {
+			if (RegisterRawInputDevices(Rid, 2, sizeof(Rid[0])) == FALSE) {
 				MessageBoxA(NULL, "RegisterRawInputDevices() failed!", "dinput8.dll", MB_OK | MB_ICONEXCLAMATION);
 				//registration failed. Call GetLastError for the cause of the error
 			}
@@ -163,9 +147,23 @@ public:
 
 	HRESULT STDMETHODCALLTYPE Base_GetDeviceStatus(GUID* rguidInstance)
 	{
-		MessageBoxA(NULL, "GetDeviceStatus", "input8.dll", MB_OK);
+		if (!rguidInstance)
+		{
+			return DIERR_INVALIDPARAM;
+		}
 
-		return S_OK;
+		if (IsEqualIID(GUID_SysMouse, *rguidInstance) || IsEqualIID(GUID_SysKeyboard, *rguidInstance))
+		{
+			return DI_OK;
+		}
+
+		DWORD gamepadIndex = diGlobalsInstance->GetXInputControllerIndex(rguidInstance);
+		if (gamepadIndex < 4 && diGlobalsInstance->IsXInputControllerConnected(gamepadIndex))
+		{
+			return DI_OK;
+		}
+
+		return DI_NOTATTACHED;
 	}
 
 	HRESULT STDMETHODCALLTYPE Base_RunControlPanel(HWND hwndOwner, DWORD dwFlags)
@@ -180,5 +178,5 @@ public:
 		MessageBoxA(NULL, "Initialize", "input8.dll", MB_OK);
 
 		return S_OK;
-	}	
+	}
 };

@@ -7,17 +7,17 @@ private:
 
 public:
 
-	CDirectInputDeviceGamepad8A() : CDirectInputDeviceGamepad8()
+	CDirectInputDeviceGamepad8A(DWORD userIndex) : CDirectInputDeviceGamepad8(userIndex)
 	{
 		gamepadDeviceInfo = new DIDEVICEINSTANCEA();
 		ZeroMemory(gamepadDeviceInfo, sizeof(DIDEVICEINSTANCEA));
 		gamepadDeviceInfo->dwSize = sizeof(DIDEVICEINSTANCEA);
-		gamepadDeviceInfo->guidInstance = GUID_Xbox360Controller;
+		gamepadDeviceInfo->guidInstance = diGlobalsInstance->gamepadInstanceGuids[userIndex];
 		gamepadDeviceInfo->guidProduct = GUID_Xbox360Controller;
 		gamepadDeviceInfo->dwDevType = DIDEVTYPE_HID | DI8DEVTYPE_GAMEPAD | (DI8DEVTYPEGAMEPAD_STANDARD << 8);
 		gamepadDeviceInfo->wUsage = HID_USAGE_GENERIC_GAMEPAD;
 		gamepadDeviceInfo->wUsagePage = HID_USAGE_PAGE_GENERIC;
-		StringCbCopyA(gamepadDeviceInfo->tszInstanceName, 260, "Controller (Gamepad XBox360)");
+		StringCbPrintfA(gamepadDeviceInfo->tszInstanceName, 260, "Controller (Gamepad XBox360) %lu", userIndex + 1);
 		StringCbCopyA(gamepadDeviceInfo->tszProductName, 260, "Controller (Gamepad XBox360)");
 
 		this->dwDevType = gamepadDeviceInfo->dwDevType;
@@ -155,90 +155,69 @@ public:
 
 		diGlobalsInstance->LogA("GamepadDevice->EnumObjects(), dwFlags: %x", __FILE__, __LINE__, dwFlags);
 
-		if ((dwFlags & DIDFT_ABSAXIS) > 0)
+		struct AxisInfo { const GUID* guid; DWORD offset; const char* name; };
+		AxisInfo axes[] = {
+			{ &GUID_XAxis, DIJOFS_X, "X-Axis" },
+			{ &GUID_YAxis, DIJOFS_Y, "Y-Axis" },
+			{ &GUID_ZAxis, DIJOFS_Z, "Left Trigger" },
+			{ &GUID_RxAxis, DIJOFS_RX, "Rx-Axis" },
+			{ &GUID_RyAxis, DIJOFS_RY, "Ry-Axis" },
+			{ &GUID_RzAxis, DIJOFS_RZ, "Right Trigger" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(axes); i++)
 		{
-			diGlobalsInstance->LogA(" ->DIDFT_ABSAXIS", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_ALIAS) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_ALIAS", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_ALL) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_ALL", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_AXIS) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_AXIS", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_BUTTON) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_BUTTON", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_COLLECTION) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_COLLECTION", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_FFACTUATOR) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_FFACTUATOR", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_FFEFFECTTRIGGER) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_FFEFFECTTRIGGER", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_NOCOLLECTION) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_NOCOLLECTION", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_NODATA) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_NODATA", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_OUTPUT) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_OUTPUT", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_POV) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_POV", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_PSHBUTTON) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_PSHBUTTON", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_RELAXIS) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_RELAXIS", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_TGLBUTTON) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_TGLBUTTON", __FILE__, __LINE__);
-		}
-		if ((dwFlags & DIDFT_VENDORDEFINED) > 0)
-		{
-			diGlobalsInstance->LogA(" ->DIDFT_VENDORDEFINED", __FILE__, __LINE__);
+			DWORD type = DIDFT_ABSAXIS | DIDFT_MAKEINSTANCE(i);
+			if (!ShouldEnumObject(dwFlags, type))
+			{
+				continue;
+			}
+
+			DIDEVICEOBJECTINSTANCEA objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEA);
+			objectInfo.guidType = *axes[i].guid;
+			objectInfo.dwOfs = axes[i].offset;
+			objectInfo.dwType = type;
+			StringCbCopyA(objectInfo.tszName, MAX_PATH, axes[i].name);
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
 		}
 
-		DIDEVICEOBJECTINSTANCEA* someObject = new DIDEVICEOBJECTINSTANCEA();
-		ZeroMemory(someObject, sizeof(DIDEVICEOBJECTINSTANCEA));
-		someObject->dwSize = sizeof(DIDEVICEOBJECTINSTANCEA);
-		someObject->guidType = GUID_XAxis;
-		someObject->dwOfs = 0;
-		someObject->dwType = DIDFT_ABSAXIS;
-		someObject->dwFlags = DIDOI_GUIDISUSAGE;
-		lstrcpyA(someObject->tszName, "X-Axis");
-		someObject->dwFFMaxForce = 0;
-		someObject->dwFFForceResolution = 0;
-		someObject->wCollectionNumber = 0;
-		someObject->wDesignatorIndex = 0;
-		someObject->wUsagePage = 0;
-		someObject->wUsage = 0;
-		someObject->dwDimension = 0;
-		someObject->wExponent = 0;
-		someObject->wReportId = 0;
+		if (ShouldEnumObject(dwFlags, DIDFT_POV))
+		{
+			DIDEVICEOBJECTINSTANCEA objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEA);
+			objectInfo.guidType = GUID_POV;
+			objectInfo.dwOfs = DIJOFS_POV(0);
+			objectInfo.dwType = DIDFT_POV;
+			StringCbCopyA(objectInfo.tszName, MAX_PATH, "POV");
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
+		}
 
-		lpCallback(someObject, pvRef);
+		for (int i = 0; i < 10; i++)
+		{
+			DWORD type = DIDFT_PSHBUTTON | DIDFT_MAKEINSTANCE(i);
+			if (!ShouldEnumObject(dwFlags, type))
+			{
+				continue;
+			}
+
+			DIDEVICEOBJECTINSTANCEA objectInfo = {};
+			objectInfo.dwSize = sizeof(DIDEVICEOBJECTINSTANCEA);
+			objectInfo.guidType = GUID_Button;
+			objectInfo.dwOfs = DIJOFS_BUTTON(i);
+			objectInfo.dwType = type;
+			StringCbPrintfA(objectInfo.tszName, MAX_PATH, "Button %i", i + 1);
+			if (lpCallback(&objectInfo, pvRef) == DIENUM_STOP)
+			{
+				return DI_OK;
+			}
+		}
 
 		return DI_OK;
 	}
@@ -262,6 +241,43 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->EnumEffects()", __FILE__, __LINE__);
 
+		if (!lpCallback)
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		struct EffectInfo { const GUID* guid; DWORD type; const char* name; };
+		EffectInfo effects[] = {
+			{ &GUID_ConstantForce, DIEFT_CONSTANTFORCE, "XInput Constant Force" },
+			{ &GUID_RampForce, DIEFT_RAMPFORCE, "XInput Ramp Force" },
+			{ &GUID_Sine, DIEFT_PERIODIC, "XInput Sine" },
+			{ &GUID_Square, DIEFT_PERIODIC, "XInput Square" },
+			{ &GUID_Triangle, DIEFT_PERIODIC, "XInput Triangle" },
+			{ &GUID_SawtoothUp, DIEFT_PERIODIC, "XInput Sawtooth Up" },
+			{ &GUID_SawtoothDown, DIEFT_PERIODIC, "XInput Sawtooth Down" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(effects); i++)
+		{
+			if (dwEffType != 0 && DIEFT_GETTYPE(dwEffType) != effects[i].type)
+			{
+				continue;
+			}
+
+			DIEFFECTINFOA info = {};
+			info.dwSize = sizeof(DIEFFECTINFOA);
+			info.guid = *effects[i].guid;
+			info.dwEffType = effects[i].type;
+			info.dwStaticParams = DIEP_TYPESPECIFICPARAMS;
+			info.dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
+			StringCbCopyA(info.tszName, MAX_PATH, effects[i].name);
+
+			if (lpCallback(&info, pvRef) == DIENUM_STOP)
+			{
+				break;
+			}
+		}
+
 		return DI_OK;
 	}
 
@@ -269,7 +285,40 @@ public:
 	{
 		diGlobalsInstance->LogA("GamepadDevice->GetEffectInfo()", __FILE__, __LINE__);
 
-		return E_NOTIMPL;
+		if (!pdei || !rguid || pdei->dwSize < sizeof(DIEFFECTINFOA))
+		{
+			return DIERR_INVALIDPARAM;
+		}
+
+		struct EffectInfo { const GUID* guid; DWORD type; const char* name; };
+		EffectInfo effects[] = {
+			{ &GUID_ConstantForce, DIEFT_CONSTANTFORCE, "XInput Constant Force" },
+			{ &GUID_RampForce, DIEFT_RAMPFORCE, "XInput Ramp Force" },
+			{ &GUID_Sine, DIEFT_PERIODIC, "XInput Sine" },
+			{ &GUID_Square, DIEFT_PERIODIC, "XInput Square" },
+			{ &GUID_Triangle, DIEFT_PERIODIC, "XInput Triangle" },
+			{ &GUID_SawtoothUp, DIEFT_PERIODIC, "XInput Sawtooth Up" },
+			{ &GUID_SawtoothDown, DIEFT_PERIODIC, "XInput Sawtooth Down" },
+		};
+
+		for (int i = 0; i < ARRAYSIZE(effects); i++)
+		{
+			if (!IsEqualIID(*rguid, *effects[i].guid))
+			{
+				continue;
+			}
+
+			ZeroMemory(pdei, sizeof(DIEFFECTINFOA));
+			pdei->dwSize = sizeof(DIEFFECTINFOA);
+			pdei->guid = *effects[i].guid;
+			pdei->dwEffType = effects[i].type;
+			pdei->dwStaticParams = DIEP_TYPESPECIFICPARAMS;
+			pdei->dwDynamicParams = DIEP_GAIN | DIEP_DURATION;
+			StringCbCopyA(pdei->tszName, MAX_PATH, effects[i].name);
+			return DI_OK;
+		}
+
+		return DIERR_UNSUPPORTED;
 	}
 
 	virtual HRESULT STDMETHODCALLTYPE EnumEffectsInFile(LPCSTR lpszFileName, LPDIENUMEFFECTSINFILECALLBACK pec, LPVOID pvRef, DWORD dwFlags)

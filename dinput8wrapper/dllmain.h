@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <objbase.h>
 #include <strsafe.h>
+#include <xinput.h>
 #include "dinput8.h"
 
 #include "hid.h"
@@ -26,6 +27,7 @@ static HMODULE DllHModule;
 #include "CDirectInputDeviceKeyboard8A.h"
 #include "CDirectInputDeviceKeyboard8W.h"
 
+#include "CDirectInputEffectXInput.h"
 #include "CDirectInputDeviceGamepad8.h"
 #include "CDirectInputDeviceGamepad8A.h"
 #include "CDirectInputDeviceGamepad8W.h"
