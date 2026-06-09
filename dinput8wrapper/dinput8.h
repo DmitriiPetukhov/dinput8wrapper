@@ -13,6 +13,7 @@
 DEFINE_GUID2(GUID_Key              , 0x55728220, 0xD33C, 0x11CF, 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00);
 DEFINE_GUID2(GUID_SysMouse         , 0x6F1D2B60, 0xD5A0, 0x11CF, 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00);
 DEFINE_GUID2(GUID_SysKeyboard      , 0x6F1D2B61, 0xD5A0, 0x11CF, 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00);
+// Wrapper-private XInput product GUID, not a DirectInput SDK predefined GUID.
 DEFINE_GUID2(GUID_Xbox360Controller, 0x028E045E, 0x0000, 0x0000, 0x00, 0x00, 0x50, 0x49 ,0x44, 0x56, 0x49, 0x44);
 
 DEFINE_GUID2(GUID_XAxis            , 0xA36D02E0, 0xC9F3, 0x11CF, 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00);
@@ -248,10 +249,14 @@ DEFINE_GUID2(GUID_SawtoothDown     , 0x13541C26, 0x8E33, 0x11D0, 0x9A, 0xD0, 0x0
 #define DIENUM_CONTINUE                 1
 
 #define DI_OK                           S_OK
+#define DI_NOTATTACHED                  S_FALSE
 #define DIERR_INVALIDPARAM              E_INVALIDARG
-#define DIERR_NOTATTACHED              0x8007048F
 #define DIERR_DEVICENOTREG              REGDB_E_CLASSNOTREG
 #define DIERR_UNSUPPORTED               E_NOTIMPL
+#define DIERR_NOINTERFACE               E_NOINTERFACE
+#define DIERR_UNPLUGGED                 0x8007048F
+#define DIERR_MOREDATA                  0x80040202L
+#define DIERR_NOTDOWNLOADED             0x80040203L
 #define DIERR_INPUTLOST					0x8007001E
 #define DI_NOEFFECT                     S_FALSE
 
@@ -267,18 +272,31 @@ HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD dwVersion, GUID* riidlt
 #define DISFFC_STOPALL          0x00000002
 #define DISFFC_PAUSE            0x00000004
 #define DISFFC_CONTINUE         0x00000008
-#define DISFFC_SETACTUATORSOFF  0x00000010
-#define DISFFC_SETACTUATORSON   0x00000020
+#define DISFFC_SETACTUATORSON   0x00000010
+#define DISFFC_SETACTUATORSOFF  0x00000020
 
 #define DIEFT_CONSTANTFORCE     0x00000001
 #define DIEFT_RAMPFORCE         0x00000002
 #define DIEFT_PERIODIC          0x00000003
 #define DIEFT_GETTYPE(n)        LOBYTE(n)
 
-#define DIEP_DURATION           0x00000001
-#define DIEP_GAIN               0x00000040
-#define DIEP_TYPESPECIFICPARAMS 0x00000080
-#define DIEP_START              0x20000000
+#define DIEP_DURATION              0x00000001
+#define DIEP_SAMPLEPERIOD          0x00000002
+#define DIEP_GAIN                  0x00000004
+#define DIEP_TRIGGERBUTTON         0x00000008
+#define DIEP_TRIGGERREPEATINTERVAL 0x00000010
+#define DIEP_AXES                  0x00000020
+#define DIEP_DIRECTION             0x00000040
+#define DIEP_ENVELOPE              0x00000080
+#define DIEP_TYPESPECIFICPARAMS    0x00000100
+#define DIEP_STARTDELAY            0x00000200
+#define DIEP_ALLPARAMS             0x000003FF
+#define DIEP_NORESTART             0x40000000
+#define DIEP_NODOWNLOAD            0x80000000
+#define DIEP_START                 0x20000000
+
+#define DIES_SOLO                  0x00000001
+#define DIES_NODOWNLOAD            0x80000000
 
 #define DIEB_NOTRIGGER          0xFFFFFFFF
 #define DIEGES_PLAYING          0x00000001

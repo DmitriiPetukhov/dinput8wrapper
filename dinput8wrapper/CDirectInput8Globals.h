@@ -408,13 +408,13 @@ public:
 	{
 		if (!CanVibrate(userIndex))
 		{
-			return DIERR_NOTATTACHED;
+			return DIERR_UNPLUGGED;
 		}
 
 		XINPUT_VIBRATION vibration = {};
 		vibration.wLeftMotorSpeed = left;
 		vibration.wRightMotorSpeed = right;
-		return xinputSetState(userIndex, &vibration) == ERROR_SUCCESS ? DI_OK : DIERR_NOTATTACHED;
+		return xinputSetState(userIndex, &vibration) == ERROR_SUCCESS ? DI_OK : DIERR_UNPLUGGED;
 	}
 
 	void StopControllerVibration(DWORD userIndex)

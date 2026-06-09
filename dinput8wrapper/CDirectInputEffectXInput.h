@@ -258,7 +258,7 @@ public:
 	{
 		if (!diGlobalsInstance->IsXInputControllerConnected(userIndex))
 		{
-			return DIERR_NOTATTACHED;
+			return DIERR_UNPLUGGED;
 		}
 
 		this->iterations = iterations;

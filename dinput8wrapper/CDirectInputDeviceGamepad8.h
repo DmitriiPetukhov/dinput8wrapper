@@ -251,7 +251,7 @@ public:
 
 		if (!diGlobalsInstance->IsXInputControllerConnected(xinputUserIndex))
 		{
-			return DIERR_NOTATTACHED;
+			return DIERR_UNPLUGGED;
 		}
 
 		HRESULT result = DI_OK;
