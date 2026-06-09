@@ -23,13 +23,17 @@ Supported DirectInput effects:
 * Sine, Square, Triangle, SawtoothUp, SawtoothDown
 * RampForce
 
-Unsupported force-feedback features such as springs, dampers, friction,
-inertia, custom force fields, and true directional forces are not physically
-emulated. They may return `DIERR_UNSUPPORTED`.
+Unsupported DirectInput force-feedback fields such as direction vectors,
+envelopes, triggers, sample periods, and start delays are accepted when valid
+and safely stored or ignored where XInput has no matching behavior.
+
+Errors are reserved for invalid parameters, invalid memory or pointer cases,
+unsupported effect families, disconnected controllers, and operations that
+would be unsafe to approximate.
 
 DirectInput force-feedback output is reduced to XInput left and right motor
-rumble. Directional forces, envelopes, trigger buttons, custom force fields,
-and hardware-specific force-feedback actuator behavior are not modeled.
+rumble. True directional forces, custom force fields, and actuator-specific
+hardware behavior cannot be physically emulated.
 
 ## How to use / Installation
 * Copy the dinput8.dll (see  https://github.com/geeky/dinput8wrapper/releases) to the folder where your game has its main executable 
